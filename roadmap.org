@@ -1,0 +1,227 @@
+#+TITLE: Roadmap & Task Plan — Qualitative Research Assistant (CAQDAS)
+#+AUTHOR: Wagner Marques & Antigravity Pair Programming
+#+DATE: [2026-11-11]
+#+DESCRIPTION: Computer-Assisted Qualitative Data Analysis Software (CAQDAS) built with Lit, Web Components, and FZL AppShell
+#+STARTUP: overview indent
+#+TODO: TODO(t) IN_PROGRESS(p) BLOCKED(b) | DONE(d) CANCELLED(c)
+
+* 🧭 Visão Geral do Projeto (Project Overview)
+
+O **Qualitative Research Assistant (CAQDAS)** é uma aplicação voltada para apoio completo ao ciclo de pesquisa qualitativa e métodos mistos.
+Projetado como um PWA de alta performance e acessibilidade, utiliza Web Components nativos com a suíte *FZL UI* (~fzl-fund-ui~: ~fzl-fund-appshell--lit~, ~@fzl/webcomponents-lit~ e ~@fzl/design-tokens~).
+
+** Objetivos Principais
+- Coletar, organizar, transcrever, codificar, interpretar e visualizar dados não-numéricos (entrevistas, documentos, áudios, vídeos e imagens).
+- Garantir total autonomia ao pesquisador no processo interpretativo, complementado por ferramentas de assistência analítica e IA.
+- Facilitar exportação direta e integração com Python / Pandas para análise de frequências, coocorrências e métodos mistos.
+
+** Pilha Tecnológica (Tech Stack)
+- *Shell & Roteamento*: ~fzl-fund-appshell--lit~ (Drawer, Header, A11y, Temas Claro/Escuro/Alto Contraste, PWA Workbox).
+- *Componentes Web*: Lit 3.x, ~@fzl/webcomponents-lit~ (~<fzl-lit-card-list>~, ~<fzl-lit-reader-content>~, ~<fzl-lit-reader-mark-bar>~, ~<fzl-lit-data-grid>~), ~@material/web~ (Material 3).
+- *Tokens de Design*: ~@fzl/design-tokens~ (variáveis CSS para cores semânticas, tipografia e elevações).
+- *Armazenamento*: IndexedDB via Dexie/idb com persistência reativa e exportação JSON/SQLite compatível com QualCoder/Taguette.
+- *Processamento Textual & Mídia*: Web Audio API, Web Workers para indexação e tokenização de texto, leitor de áudio com timeline de transcrição sincronizada.
+
+* 📊 Dashboard de Progresso (Status Geral)
+
+#+BEGIN_EXAMPLE
+Progresso Geral: [ 10% ]
+[██░░░░░░░░░░░░░░░░░░]
+Fase 1: Fundação & AppShell Scaffold        [████████████████████] 100% DONE
+Fase 2: Gestão de Projetos & Importação      [░░░░░░░░░░░░░░░░░░░░]   0% TODO
+Fase 3: Sistema de Transcrição & Mídia       [░░░░░░░░░░░░░░░░░░░░]   0% TODO
+Fase 4: Motor de Codificação & Excertos      [░░░░░░░░░░░░░░░░░░░░]   0% TODO
+Fase 5: Livro de Códigos & Categorização     [░░░░░░░░░░░░░░░░░░░░]   0% TODO
+Fase 6: Busca Textual & Análise Comparativa  [░░░░░░░░░░░░░░░░░░░░]   0% TODO
+Fase 7: Memos, Diário & Anotações            [░░░░░░░░░░░░░░░░░░░░]   0% TODO
+Fase 8: Visualização de Dados & Redes        [░░░░░░░░░░░░░░░░░░░░]   0% TODO
+Fase 9: Relatórios, Métricas & Python Export [░░░░░░░░░░░░░░░░░░░░]   0% TODO
+Fase 10: Módulo de IA com Supervisão         [░░░░░░░░░░░░░░░░░░░░]   0% TODO
+#+END_EXAMPLE
+
+* 🚀 Fases de Desenvolvimento e Tarefas (Task Breakdown)
+
+** FASE 1: Fundação, Scaffolding e AppShell FZL [2/2]
+:PROPERTIES:
+:CATEGORY: scaffolding
+:END:
+- [X] Tarefa 1.1: Inicialização do repositório Git, submódulo ~fzl-fund-ui~ e scripts de links simbólicos (~scripts/setup-links.mjs~).
+- [X] Tarefa 1.2: Configuração de ~package.json~, ~vite.config.js~, ~index.html~ e compilação inicial de tokens e componentes Lit.
+
+** FASE 2: Organização de Dados e Importação de Arquivos [0/4]
+:PROPERTIES:
+:CATEGORY: data-management
+:END:
+Permitir que o pesquisador crie projetos, defina participantes/casos e faça ingestão de materiais.
+
+- [ ] TODO Tarefa 2.1: Modelagem do Schema de Dados (IndexedDB)
+  - Entidades: ~Project~, ~SourceDocument~ (entrevistas, PDFs, áudios, vídeos, imagens, tabelas), ~Participant~, ~Folder~, ~Category~.
+  - Atributos demográficos e variáveis de caso (gênero, idade, grupo focal, data).
+- [ ] TODO Tarefa 2.2: View de Projetos e Casos (~<caqdas-projects-view>~)
+  - Criar, clonar, arquivar e alternar entre projetos de pesquisa.
+  - Atribuição de documentos a pastas temáticas e participantes.
+- [ ] TODO Tarefa 2.3: Módulo de Importação Multifonte (~<caqdas-import-dialog>~)
+  - Suporte a texto simples (.txt, .md), documentos Word (.docx) e PDFs.
+  - Suporte a planilhas com respostas abertas de questionários (.csv, .xlsx).
+  - Suporte a arquivos multimídia (áudio .mp3, .wav, .m4a; vídeo .mp4, .webm; imagens .png, .jpg).
+- [ ] TODO Tarefa 2.4: Navegador de Fontes & Documentos (~<caqdas-sources-view>~)
+  - Visualização em tabela (~<fzl-lit-data-grid>~) e em cartões (~<fzl-lit-card-list>~).
+  - Metadados, contagem de palavras e resumo de cada documento.
+
+** FASE 3: Transcrição Sincronizada de Áudio e Vídeo [0/3]
+:PROPERTIES:
+:CATEGORY: transcription
+:END:
+Ferramenta para converter gravações de campo em texto de análise.
+
+- [ ] TODO Tarefa 3.1: Reprodutor de Mídia com Controle de Pesquisador (~<caqdas-media-player>~)
+  - Controles de velocidade (0.5x, 0.75x, 1x, 1.25x, 1.5x), atalhos de teclado (Play/Pause global, retroceder 3s).
+  - Visualização de forma de onda (waveform) de áudio.
+- [ ] TODO Tarefa 3.2: Editor de Transcrição com Timestamps (~<caqdas-transcription-editor>~)
+  - Inserção de marcas temporais sincronizadas (clicar no trecho pula para o ponto exato da gravação).
+  - Identificação e diferenciação de interlocutores/falantes (Ex: Entrevistador vs. Participante 1).
+- [ ] TODO Tarefa 3.3: Suporte a Transcrição Assistida (IA / Speech-to-Text)
+  - Importação de legendas VTT/SRT e integração com Web Speech API ou modelos Whisper (local/remoto).
+
+** FASE 4: Motor de Codificação Qualitativa & Excertos [0/4]
+:PROPERTIES:
+:CATEGORY: coding
+:END:
+O coração do software CAQDAS: selecionar evidências e vincular códigos e conceitos teóricos.
+
+- [ ] TODO Tarefa 4.1: Leitor e Codificador de Textos (~<caqdas-text-coder>~)
+  - Reutilização e expansão de ~<fzl-lit-reader-content>~ e ~<fzl-lit-reader-mark-bar>~.
+  - Seleção de trechos (excertos/quotations) com menu contextual flutuante para vincular códigos existentes ou criar novos.
+  - Realce visual colorido por código no corpo do texto (com suporte a códigos sobrepostos).
+- [ ] TODO Tarefa 4.2: Codificação de Imagens e Multimídia (~<caqdas-media-coder>~)
+  - Codificação de regiões de imagem (seleção de retângulos/áreas de interesse).
+  - Codificação de segmentos temporais de áudio e vídeo (trecho de [02:15] a [03:40] associado ao código "Dificuldade de Conexão").
+- [ ] TODO Tarefa 4.3: Painel Lateral de Margem de Códigos ("Coding Stripes")
+  - Faixas visuais na margem direita indicando códigos atribuídos aos parágrafos, padrão consagrado em softwares como MAXQDA e NVivo.
+- [ ] TODO Tarefa 4.4: Inspetor e Gerenciador de Excertos (~<caqdas-quotations-view>~)
+  - Listagem de todos os excertos vinculados a um código com botão de navegação direta para o contexto original.
+
+** FASE 5: Gestão do Livro de Códigos e Categorização Hierárquica [0/3]
+:PROPERTIES:
+:CATEGORY: codebook
+:END:
+Estruturação conceitual dos achados da pesquisa.
+
+- [ ] TODO Tarefa 5.1: Hierarquia de Códigos & Árvore Conceitual (~<caqdas-codebook-view>~)
+  - Estrutura em árvore: Códigos-Pai (Categorias/Temas) e Subcódigos (Ex: "Tecnologia na Educação" -> "Benefícios" -> "Engajamento").
+  - Drag-and-drop para reestruturar hierarquias.
+- [ ] TODO Tarefa 5.2: Operações de Refinamento de Códigos
+  - Renomear, mesclar códigos duplicados/sinônimos, dividir códigos amplos e excluir com reatribuição.
+  - Paleta de cores para cada código e definição teórica formal (definição operacional).
+- [ ] TODO Tarefa 5.3: Exportação e Importação de Livro de Códigos (Codebook)
+  - Exportação em XML QDPX (padrão REFI-QDA de interoperabilidade entre softwares CAQDAS) e JSON.
+
+** FASE 6: Busca Textual e Análise Comparativa [0/3]
+:PROPERTIES:
+:CATEGORY: analysis
+:END:
+Exploração aprofundada de padrões, divergências e regularidades.
+
+- [ ] TODO Tarefa 6.1: Mecanismo de Busca Textual & KWIC (~<caqdas-search-view>~)
+  - Busca exata, booleana (AND, OR, NOT) e por expressões regulares.
+  - Visualização KWIC (Keyword in Context): exibição da palavra-chave com contexto prévio e posterior.
+- [ ] TODO Tarefa 6.2: Matriz Comparativa de Casos & Participantes (~<caqdas-matrix-view>~)
+  - Cruzamento de códigos x atributos demográficos (Ex: Percepção de alunos do 1º ano vs. formandos).
+  - Filtros cruzados para contrastar respostas e narrativas.
+- [ ] TODO Tarefa 6.3: Análise de Coocorrência de Códigos
+  - Identificar quais códigos costumam aparecer juntos nos mesmos parágrafos ou próximos uns dos outros.
+
+** FASE 7: Memos, Diário de Bordo e Anotações Reflexivas [0/3]
+:PROPERTIES:
+:CATEGORY: memos
+:END:
+Registro das decisões metodológicas e insights epistemológicos do pesquisador.
+
+- [ ] TODO Tarefa 7.1: Editor de Memos Analíticos (~<caqdas-memos-view>~)
+  - Memos de código, memos de documento, memos de projeto e memos teóricos livres.
+  - Formatação rica (Markdown / WYSIWYG).
+- [ ] TODO Tarefa 7.2: Vinculação de Memos a Códigos e Excertos
+  - Ícone de memo nas margens do texto para leitura imediata de reflexões do pesquisador.
+- [ ] TODO Tarefa 7.3: Diário de Bordo da Pesquisa (Research Logbook)
+  - Histórico cronológico de decisões analíticas e critérios de inclusão/exclusão.
+
+** FASE 8: Visualização de Dados, Diagramas e Mapas Conceituais [0/3]
+:PROPERTIES:
+:CATEGORY: visualization
+:END:
+Transformação gráfica dos achados para comunicação e descoberta de relações.
+
+- [ ] TODO Tarefa 8.1: Diagrama de Redes e Relações entre Códigos (~<caqdas-network-view>~)
+  - Grafos interativos com nós (códigos/conceitos) e arestas direcionadas (associações, causalidade, contradição).
+- [ ] TODO Tarefa 8.2: Mapas de Hierarquia e Nuvens Temáticas
+  - Visualização Treemap de frequências de códigos e nuvens de palavras ponderadas com exclusão de stopwords.
+- [ ] TODO Tarefa 8.3: Exportação Gráfica
+  - Exportação dos diagramas em SVG e PNG de alta resolução para inclusão em teses, dissertações e artigos.
+
+** FASE 9: Relatórios Analíticos, Métricas e Integração com Python [0/3]
+:PROPERTIES:
+:CATEGORY: reporting
+:END:
+Produção de saídas acadêmicas e integração computacional.
+
+- [ ] TODO Tarefa 9.1: Gerador de Relatórios Temáticos (~<caqdas-report-view>~)
+  - Relatório consolidado por tema contendo definição do código, frequência, excertos ilustrativos e memos associados.
+  - Exportação formatada em HTML imprimível, PDF e Markdown.
+- [ ] TODO Tarefa 9.2: Tabelas de Frequência e Estatística Descritiva
+  - Contagem de segmentos codificados por documento e por código.
+- [ ] TODO Tarefa 9.3: Integração Direta com Python & Pandas
+  - Exportação de dados tabulados em CSV/JSON prontos para ~pd.read_csv()~ / ~pd.DataFrame()~.
+  - Snippets de código Python prontos para carregar dados, plotar matrizes de calor (heatmaps) e calcular métricas de concordância interobservador (Kappa de Cohen / Alpha de Krippendorff).
+
+** FASE 10: Assistência por Inteligência Artificial (AI-Assisted CAQDAS) [0/3]
+:PROPERTIES:
+:CATEGORY: ai-features
+:END:
+Auxílio cognitivo respeitando o princípio de que o pesquisador é o árbitro final da interpretação.
+
+- [ ] TODO Tarefa 10.1: Sugestões Semânticas de Códigos e Temas
+  - Análise semântica do parágrafo selecionado com sugestão de códigos já existentes ou novos temas candidatos.
+- [ ] TODO Tarefa 10.2: Sumarização de Documentos e Síntese de Evidências
+  - Resumos executivos de entrevistas extensas focando nos pontos centrais dos relatos.
+- [ ] TODO Tarefa 10.3: Painel de Revisão Humana ("Human-in-the-Loop")
+  - Toda sugestão gerada pela IA é destacada como preliminar e exige aceitação, edição ou rejeição explícita pelo pesquisador.
+
+* 📐 Arquitetura de Componentes & Vistas
+
+```text
+src/
+├── main.js                        # AppShell bootstrap, rotas e configuração global
+├── styles/
+│   └── app.css                    # Estilos complementares e variáveis semânticas
+├── services/
+│   ├── storage-service.js         # Persistência IndexedDB e estado reativo
+│   ├── project-service.js         # Gestão de projetos, pastas e participantes
+│   ├── coding-service.js          # Marcação de excertos, códigos e categorias
+│   ├── transcription-service.js   # Timestamps, player de mídia e sincronização
+│   ├── search-service.js          # Busca textual, regex, KWIC e indexador
+│   └── export-service.js          # Exportação para Python/Pandas, CSV, QDPX e relatórios
+├── components/
+│   ├── caqdas-header.js           # Cabeçalho com indicador de projeto ativo
+│   ├── caqdas-document-viewer.js  # Visualizador com seleção de excertos
+│   ├── caqdas-coding-bar.js       # Barra rápida de atribuição de códigos
+│   ├── caqdas-code-tree.js        # Árvore hierárquica interativa de códigos
+│   ├── caqdas-media-player.js     # Player de áudio com timeline de transcrição
+│   └── caqdas-network-canvas.js   # Renderizador de mapa conceitual e relações
+└── views/
+    ├── caqdas-home-view.js        # Dashboard do projeto, métricas e atalhos rápidos
+    ├── caqdas-sources-view.js     # Gerenciamento de materiais, pastas e importação
+    ├── caqdas-coding-view.js      # Espaço central de codificação de texto e mídia
+    ├── caqdas-codebook-view.js    # Livro de códigos, categorias e definições
+    ├── caqdas-transcribe-view.js  # Estação de transcrição de áudio/vídeo
+    ├── caqdas-search-view.js      # Busca, consultas booleanas e KWIC
+    ├── caqdas-matrix-view.js      # Análise comparativa entre participantes e grupos
+    ├── caqdas-memos-view.js       # Diário de bordo e anotações teóricas
+    ├── caqdas-visualize-view.js   # Mapas conceituais, redes e nuvens temáticas
+    └── caqdas-reports-view.js     # Geração de relatórios e exportação Python/Pandas
+```
+
+* 🔗 Referências e Padrões Metodológicos
+- *Taguette*: https://www.taguette.org/ — Foco em codificação textual aberta e direta.
+- *QualCoder*: https://github.com/ccbogel/QualCoder — Análise multimídia e relatórios acadêmicos.
+- *MAXQDA & ATLAS.ti*: Referências em redes semânticas, coding stripes e matrizes de casos.
+- *Padrão REFI-QDA*: Especificação aberta QDPX para intercâmbio de dados qualitativos entre ferramentas.

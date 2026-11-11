@@ -1,0 +1,30 @@
+{
+  "name": "researcher-in-qualitative-method",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Qualitative Research Assistant (CAQDAS) built with Lit, Web Components, and FZL AppShell",
+  "scripts": {
+    "postinstall": "node scripts/setup-links.mjs && cd fzl-fund-ui && npm install && npm run build:tokens && npm run build:lit",
+    "build:ui": "npm run build:tokens --prefix fzl-fund-ui && npm run build:lit --prefix fzl-fund-ui",
+    "predev": "node scripts/setup-links.mjs && npm run build:ui",
+    "prebuild": "node scripts/setup-links.mjs && npm run build:ui",
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "serve": "npm run build && npm run preview"
+  },
+  "dependencies": {
+    "@fontsource/atkinson-hyperlegible-next": "^5.3.0",
+    "@fontsource/opendyslexic": "^5.3.0",
+    "@material-symbols/font-400": "^0.35.0",
+    "@material/web": "^2.5.0",
+    "dompurify": "^3.4.17",
+    "lit": "^3.3.3"
+  },
+  "devDependencies": {
+    "sharp": "^0.35.4",
+    "vite": "^8.0.0",
+    "vite-plugin-pwa": "^1.3.0"
+  }
+}
