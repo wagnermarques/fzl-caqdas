@@ -136,6 +136,11 @@ export class CaqdasHomeView extends LitElement {
         </div>
 
         <div class="quick-actions">
+          <md-filled-button href="#/teoria-bardin">
+            <md-icon slot="icon">school</md-icon>
+            Teoria: Análise de Bardin
+          </md-filled-button>
+
           <md-filled-button href="#/codificacao">
             <md-icon slot="icon">edit_note</md-icon>
             Área de Codificação
@@ -159,6 +164,11 @@ export class CaqdasHomeView extends LitElement {
           <md-outlined-button href="#/relatorios">
             <md-icon slot="icon">analytics</md-icon>
             Relatórios & Python
+          </md-outlined-button>
+
+          <md-outlined-button href="#/documentacao-app">
+            <md-icon slot="icon">help_center</md-icon>
+            Manual do App
           </md-outlined-button>
         </div>
       </div>

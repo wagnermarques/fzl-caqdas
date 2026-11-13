@@ -1,0 +1,59 @@
+#+TITLE: Manual de Utilização do Aplicativo — FZL CAQDAS
+#+AUTHOR: Wagner Marques & Antigravity Pair Programming
+#+DATE: [2026-11-13]
+#+DESCRIPTION: Documentação técnica e operacional de uso do software FZL CAQDAS (separada das anotações de fundamentação teórica)
+#+STARTUP: overview indent
+
+* 📘 Escopo deste Manual
+Este documento destina-se exclusivamente à **utilização operacional do aplicativo FZL CAQDAS** (instalação, execução, navegação entre telas e fluxo de trabalho na interface).
+As anotações de estudo sobre a teoria metodológica de Laurence Bardin e as citações bibliográficas ficam estritamente separadas em [[../teoria/analise-de-conteudo-bardin.org][docs/teoria/analise-de-conteudo-bardin.org]].
+
+* 1. Execução Local e Acesso Online (PWA)
+
+** 1.1 Acesso Web (GitHub Pages)
+A aplicação é compilada como Progressive Web App (PWA) e publicada automaticamente em:
+- https://wagnermarques.github.io/fzl-caqdas/
+
+** 1.2 Execução em Ambiente de Desenvolvimento Local
+Pré-requisitos: Node.js `>= 20` e npm `>= 10`.
+
+#+BEGIN_SRC bash
+# Instalar dependências e compilar o monorepo FZL UI
+npm install
+
+# Iniciar o servidor de desenvolvimento (porta 3040)
+npm run dev
+
+# Gerar build de produção PWA em dist/
+npm run build
+
+# Visualizar build de produção localmente
+npm run serve
+#+END_SRC
+
+* 2. Estrutura de Telas e Módulos do Aplicativo
+
+A navegação principal é feita pelo menu lateral (Drawer) do *FZL AppShell*, organizado em áreas distintas:
+
+** 2.1 Corpus & Materiais
+- *Visão Geral (Dashboard)* (`#/`): Exibe contadores de documentos/entrevistas, códigos criados, segmentos codificados e memos registrados, além de atalhos rápidos.
+- *Fontes & Documentos* (`#/fontes`): Permite visualizar os documentos importados e cadastrar novas entrevistas/documentos textuais com identificação do participante/informante.
+
+** 2.2 Análise Qualitativa
+- *Área de Codificação* (`#/codificacao`): Selecione um documento, destaque trechos do texto com o cursor do mouse, escolha um código no seletor e clique em **Codificar Trecho** para criar o excerto vinculado.
+- *Livro de Códigos (Codebook)* (`#/codebook`): Agrupa os códigos por categoria, exibe a definição operacional, cor identificadora e a frequência de ocorrências em todo o projeto. Permite criar novos códigos.
+- *Matriz Comparativa* (`#/comparativo`): Exibe uma tabela cruzada entre **Participantes/Casos** (linhas) e **Códigos** (colunas), mostrando a frequência de menções por informante.
+- *Memos & Diário de Bordo* (`#/memos`): Espaço para registrar reflexões analíticas do pesquisador durante a análise dos dados.
+
+** 2.3 Referencial Metodológico (Separado do Manual de Uso)
+- *Teoria: Análise de Bardin* (`#/teoria-bardin`): Módulo dedicado ao estudo teórico, fichamento do vídeo/playlist, seleção de fontes acadêmicas de acesso aberto com citações ABNT e caderno de anotações teóricas.
+
+** 2.4 Saídas & Integração
+- *Relatórios & Python/Pandas* (`#/relatorios`): Permite baixar todo o projeto em formato ~JSON~ e fornece um script Python pronto para carregar os excertos no Pandas (~pd.DataFrame~) e gerar tabelas cruzadas (~pd.crosstab~).
+
+** 2.5 Ajuda & Operação
+- *Documentação do Aplicativo* (`#/documentacao-app`): Guia rápido de operação integrado dentro da própria interface web.
+
+* 3. Armazenamento e Privacidade Local
+- Os dados de pesquisa (~fzl_caqdas_research_data_v1~) e as anotações teóricas de estudo (~fzl_caqdas_theory_study_v1~) são persistidos localmente no navegador (~localStorage~), mantendo os dois acervos isolados.
+- Recomenda-se utilizar periodicamente a função **Baixar Projeto Completo (JSON)** na tela de Relatórios para backup externo dos seus dados empíricos.

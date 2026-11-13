@@ -12,6 +12,8 @@ import './views/caqdas-codebook-view.js'
 import './views/caqdas-matrix-view.js'
 import './views/caqdas-memos-view.js'
 import './views/caqdas-reports-view.js'
+import './views/caqdas-theory-view.js'
+import './views/caqdas-app-docs-view.js'
 
 createAppShell({
   mount: '#app',
@@ -47,10 +49,27 @@ createAppShell({
       name: 'relatorios',
       match: pattern('/relatorios'),
       render: () => html`<caqdas-reports-view></caqdas-reports-view>`
+    },
+    {
+      name: 'teoria-bardin',
+      match: pattern('/teoria-bardin'),
+      render: () => html`<caqdas-theory-view></caqdas-theory-view>`
+    },
+    {
+      name: 'documentacao-app',
+      match: pattern('/documentacao-app'),
+      render: () => html`<caqdas-app-docs-view></caqdas-app-docs-view>`
     }
   ],
   drawer: {
     sections: [
+      {
+        id: 'theory-section',
+        label: 'Referencial Metodológico',
+        items: [
+          { label: 'Teoria: Análise de Bardin', href: '#/teoria-bardin', icon: 'school' }
+        ]
+      },
       {
         id: 'corpus-section',
         label: 'Corpus & Materiais',
@@ -74,6 +93,13 @@ createAppShell({
         label: 'Saídas & Integração',
         items: [
           { label: 'Relatórios & Python/Pandas', href: '#/relatorios', icon: 'analytics' }
+        ]
+      },
+      {
+        id: 'help-section',
+        label: 'Ajuda & Operação',
+        items: [
+          { label: 'Documentação do Aplicativo', href: '#/documentacao-app', icon: 'help_center' }
         ]
       }
     ]

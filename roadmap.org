@@ -25,9 +25,10 @@ Projetado como um PWA de alta performance e acessibilidade, utiliza Web Componen
 * 📊 Dashboard de Progresso (Status Geral)
 
 #+BEGIN_EXAMPLE
-Progresso Geral: [ 10% ]
-[██░░░░░░░░░░░░░░░░░░]
+Progresso Geral: [ 18% ]
+[███░░░░░░░░░░░░░░░░░]
 Fase 1: Fundação & AppShell Scaffold        [████████████████████] 100% DONE
+Fase 1.5: Fundamentação Teórica (Bardin)    [████████████████████] 100% DONE
 Fase 2: Gestão de Projetos & Importação      [░░░░░░░░░░░░░░░░░░░░]   0% TODO
 Fase 3: Sistema de Transcrição & Mídia       [░░░░░░░░░░░░░░░░░░░░]   0% TODO
 Fase 4: Motor de Codificação & Excertos      [░░░░░░░░░░░░░░░░░░░░]   0% TODO
@@ -49,11 +50,22 @@ Fase 10: Módulo de IA com Supervisão         [░░░░░░░░░░�
 - [X] Tarefa 1.2: Configuração de ~package.json~, ~vite.config.js~, ~index.html~ e compilação inicial de tokens e componentes Lit.
 - [X] Tarefa 1.3: Publicação do repositório remoto ~wagnermarques/fzl-caqdas~ e pipeline de CI/CD para GitHub Pages (~https://wagnermarques.github.io/fzl-caqdas/~).
 
-** FASE 2: Organização de Dados e Importação de Arquivos [0/4]
+** FASE 1.5 (FASE TEÓRICA): Fundamentação Metodológica — Análise de Conteúdo de Laurence Bardin [4/4]
+:PROPERTIES:
+:CATEGORY: bardin-theory
+:END:
+Base teórico-metodológica documentada e isolada da documentação técnica de uso do aplicativo para orientar o desenvolvimento das fases seguintes do software segundo os 3 polos cronológicos de Bardin (Pré-análise, Exploração do Material e Tratamento/Inferência).
+
+- [X] Tarefa 1.5.1: Fichamento completo do vídeo de referência (~3fvAcOrcr5Y~) e mapeamento da playlist (~PLKL-OaADMnAh-bbrCwTb5SQTpjbCN6Zse~) do Canal Metodologia Descomplicada, com os 3 exemplos práticos e citação formal ABNT.
+- [X] Tarefa 1.5.2: Levantamento de fontes acadêmicas de acesso aberto (SciELO, PePSIC, Unicamp, UEL, Qualitas) com citações ABNT e matriz de tradução Teoria -> Requisitos do Software em [[file:docs/teoria/analise-de-conteudo-bardin.org][docs/teoria/analise-de-conteudo-bardin.org]].
+- [X] Tarefa 1.5.3: Separação estrita entre documentação de uso do aplicativo ([[file:docs/uso/manual-do-aplicativo.org][docs/uso/manual-do-aplicativo.org]] e rota ~#/documentacao-app~) e acervo teórico (rota ~#/teoria-bardin~ e armazenamento isolado ~fzl_caqdas_theory_study_v1~).
+- [X] Tarefa 1.5.4: Implementação do catálogo interativo de seleção de fontes e caderno de anotações teóricas com citação obrigatória em ~<caqdas-theory-view>~.
+
+** FASE 2: Organização de Dados e Importação de Arquivos (Polo 1 de Bardin: Pré-Análise) [0/4]
 :PROPERTIES:
 :CATEGORY: data-management
 :END:
-Permitir que o pesquisador crie projetos, defina participantes/casos e faça ingestão de materiais.
+Permitir que o pesquisador crie projetos, defina participantes/casos, execute a *Leitura Flutuante* e valide o *Corpus* pelas 4 regras de Bardin (Exaustividade, Representatividade, Homogeneidade e Pertinência).
 
 - [ ] TODO Tarefa 2.1: Modelagem do Schema de Dados (IndexedDB)
   - Entidades: ~Project~, ~SourceDocument~ (entrevistas, PDFs, áudios, vídeos, imagens, tabelas), ~Participant~, ~Folder~, ~Category~.
@@ -84,11 +96,11 @@ Ferramenta para converter gravações de campo em texto de análise.
 - [ ] TODO Tarefa 3.3: Suporte a Transcrição Assistida (IA / Speech-to-Text)
   - Importação de legendas VTT/SRT e integração com Web Speech API ou modelos Whisper (local/remoto).
 
-** FASE 4: Motor de Codificação Qualitativa & Excertos [0/4]
+** FASE 4: Motor de Codificação Qualitativa & Excertos (Polo 2 de Bardin: Exploração do Material) [0/4]
 :PROPERTIES:
 :CATEGORY: coding
 :END:
-O coração do software CAQDAS: selecionar evidências e vincular códigos e conceitos teóricos.
+O coração do software CAQDAS: recortar Unidades de Registro (UR) preservando a Unidade de Contexto (UC), aplicando codificação dedutiva (a priori) ou indutiva (a posteriori).
 
 - [ ] TODO Tarefa 4.1: Leitor e Codificador de Textos (~<caqdas-text-coder>~)
   - Reutilização e expansão de ~<fzl-lit-reader-content>~ e ~<fzl-lit-reader-mark-bar>~.
@@ -102,11 +114,11 @@ O coração do software CAQDAS: selecionar evidências e vincular códigos e con
 - [ ] TODO Tarefa 4.4: Inspetor e Gerenciador de Excertos (~<caqdas-quotations-view>~)
   - Listagem de todos os excertos vinculados a um código com botão de navegação direta para o contexto original.
 
-** FASE 5: Gestão do Livro de Códigos e Categorização Hierárquica [0/3]
+** FASE 5: Gestão do Livro de Códigos e Categorização Hierárquica (Polo 2 de Bardin: Categorização) [0/3]
 :PROPERTIES:
 :CATEGORY: codebook
 :END:
-Estruturação conceitual dos achados da pesquisa.
+Estruturação conceitual dos achados da pesquisa observando as 5 regras de Bardin (Exclusão Mútua, Homogeneidade, Pertinência, Objetividade/Fidelidade e Produtividade) e o funil categorial de Silva & Fossá (2015).
 
 - [ ] TODO Tarefa 5.1: Hierarquia de Códigos & Árvore Conceitual (~<caqdas-codebook-view>~)
   - Estrutura em árvore: Códigos-Pai (Categorias/Temas) e Subcódigos (Ex: "Tecnologia na Educação" -> "Benefícios" -> "Engajamento").
@@ -159,11 +171,11 @@ Transformação gráfica dos achados para comunicação e descoberta de relaçõ
 - [ ] TODO Tarefa 8.3: Exportação Gráfica
   - Exportação dos diagramas em SVG e PNG de alta resolução para inclusão em teses, dissertações e artigos.
 
-** FASE 9: Relatórios Analíticos, Métricas e Integração com Python [0/3]
+** FASE 9: Relatórios Analíticos, Métricas e Integração com Python (Polo 3 de Bardin: Tratamento, Inferência e Interpretação) [0/3]
 :PROPERTIES:
 :CATEGORY: reporting
 :END:
-Produção de saídas acadêmicas e integração computacional.
+Produção de saídas acadêmicas (quadros de frequências $n$ e $\%$, excertos literais anonimizados e confronto teórico) e integração computacional.
 
 - [ ] TODO Tarefa 9.1: Gerador de Relatórios Temáticos (~<caqdas-report-view>~)
   - Relatório consolidado por tema contendo definição do código, frequência, excertos ilustrativos e memos associados.
@@ -187,17 +199,24 @@ Auxílio cognitivo respeitando o princípio de que o pesquisador é o árbitro f
 - [ ] TODO Tarefa 10.3: Painel de Revisão Humana ("Human-in-the-Loop")
   - Toda sugestão gerada pela IA é destacada como preliminar e exige aceitação, edição ou rejeição explícita pelo pesquisador.
 
-* 📐 Arquitetura de Componentes & Vistas
+* 📐 Arquitetura de Documentação, Componentes & Vistas
 
 ```text
+docs/
+├── teoria/
+│   └── analise-de-conteudo-bardin.org  # Fundamentação teórica de Bardin e citações ABNT (isolado do manual)
+└── uso/
+    └── manual-do-aplicativo.org        # Manual técnico e operacional de uso do software
+
 src/
 ├── main.js                        # AppShell bootstrap, rotas e configuração global
 ├── styles/
 │   └── app.css                    # Estilos complementares e variáveis semânticas
 ├── services/
-│   ├── storage-service.js         # Persistência IndexedDB e estado reativo
+│   ├── bardin-theory-data.js      # Estrutura teórica de Bardin, playlist, fontes abertas e notas iniciais
+│   ├── storage-service.js         # Persistência separada (dados empíricos vs. estudo teórico)
 │   ├── project-service.js         # Gestão de projetos, pastas e participantes
-│   ├── coding-service.js          # Marcação de excertos, códigos e categorias
+│   ├── coding-service.js          # Marcação de excertos (UR/UC), códigos e categorias
 │   ├── transcription-service.js   # Timestamps, player de mídia e sincronização
 │   ├── search-service.js          # Busca textual, regex, KWIC e indexador
 │   └── export-service.js          # Exportação para Python/Pandas, CSV, QDPX e relatórios
@@ -210,6 +229,8 @@ src/
 │   └── caqdas-network-canvas.js   # Renderizador de mapa conceitual e relações
 └── views/
     ├── caqdas-home-view.js        # Dashboard do projeto, métricas e atalhos rápidos
+    ├── caqdas-theory-view.js      # Referencial metodológico de Bardin, fontes abertas e caderno de estudo
+    ├── caqdas-app-docs-view.js    # Manual de utilização do aplicativo (separado da teoria)
     ├── caqdas-sources-view.js     # Gerenciamento de materiais, pastas e importação
     ├── caqdas-coding-view.js      # Espaço central de codificação de texto e mídia
     ├── caqdas-codebook-view.js    # Livro de códigos, categorias e definições
@@ -222,6 +243,9 @@ src/
 ```
 
 * 🔗 Referências e Padrões Metodológicos
+- *BARDIN, Laurence.* Análise de conteúdo. São Paulo: Edições 70, 2011. (Obra base — 3 polos cronológicos).
+- *Canal Metodologia Descomplicada (Vídeo & Playlist)*: https://www.youtube.com/watch?v=3fvAcOrcr5Y&list=PLKL-OaADMnAh-bbrCwTb5SQTpjbCN6Zse
+- *Fontes Acadêmicas de Acesso Aberto catalogadas*: Silva & Fossá (2015), Mozzato & Grzybovski (2011), Câmara (2013), Caregnato & Mutti (2006), Urquiza & Marques (2016), Albuquerque et al. (2018) e Vitali et al. (2019) — detalhadas em [[file:docs/teoria/analise-de-conteudo-bardin.org][docs/teoria/analise-de-conteudo-bardin.org]].
 - *Taguette*: https://www.taguette.org/ — Foco em codificação textual aberta e direta.
 - *QualCoder*: https://github.com/ccbogel/QualCoder — Análise multimídia e relatórios acadêmicos.
 - *MAXQDA & ATLAS.ti*: Referências em redes semânticas, coding stripes e matrizes de casos.

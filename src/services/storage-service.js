@@ -1,10 +1,35 @@
 import { INITIAL_RESEARCH_DATA } from './sample-data.js'
+import { BARDIN_OPEN_ACCESS_SOURCES, INITIAL_STUDY_NOTES } from './bardin-theory-data.js'
 
 const STORAGE_KEY = 'fzl_caqdas_research_data_v1'
+const STORAGE_THEORY_KEY = 'fzl_caqdas_theory_study_v1'
 
 class ResearchStorageService {
   constructor() {
     this._data = this._loadData()
+    this._theoryData = this._loadTheoryData()
+  }
+
+  _loadTheoryData() {
+    const raw = localStorage.getItem(STORAGE_THEORY_KEY)
+    if (raw) {
+      try {
+        return JSON.parse(raw)
+      } catch (e) {
+        console.error('Error parsing stored theory study data:', e)
+      }
+    }
+    const initial = {
+      sources: JSON.parse(JSON.stringify(BARDIN_OPEN_ACCESS_SOURCES)),
+      notes: JSON.parse(JSON.stringify(INITIAL_STUDY_NOTES))
+    }
+    this._saveTheoryData(initial)
+    return initial
+  }
+
+  _saveTheoryData(data) {
+    localStorage.setItem(STORAGE_THEORY_KEY, JSON.stringify(data))
+    window.dispatchEvent(new CustomEvent('caqdas-theory-changed', { detail: data }))
   }
 
   _loadData() {
@@ -112,6 +137,79 @@ class ResearchStorageService {
   resetToDefault() {
     this._data = JSON.parse(JSON.stringify(INITIAL_RESEARCH_DATA))
     this._saveData(this._data)
+  }
+
+  getTheoryStudyData() {
+    return this._theoryData
+  }
+
+  getOpenAccessSources() {
+    return this._theoryData.sources || []
+  }
+
+  toggleSourceSelection(sourceId) {
+    const sources = this._theoryData.sources || []
+    const target = sources.find(s => s.id === sourceId)
+    if (!target) return null
+    target.selectedForFramework = !target.selectedForFramework
+    this._saveTheoryData(this._theoryData)
+    return target
+  }
+
+  addSource(sourceObj) {
+    const newSource = {
+      id: sourceObj.id || `src-${Date.now()}`,
+      shortRef: sourceObj.shortRef || 'Fonte Adicionada',
+      type: sourceObj.type || 'Artigo Metodológico (Acesso Aberto)',
+      accessStatus: sourceObj.accessStatus || 'Acesso Aberto',
+      abntCitation: sourceObj.abntCitation || '',
+      url: sourceObj.url || '',
+      summary: sourceObj.summary || '',
+      contributionsToSoftware: sourceObj.contributionsToSoftware || '',
+      selectedForFramework: sourceObj.selectedForFramework ?? true
+    }
+    this._theoryData.sources = this._theoryData.sources || []
+    this._theoryData.sources.push(newSource)
+    this._saveTheoryData(this._theoryData)
+    return newSource
+  }
+
+  getTheoreticalNotes() {
+    return this._theoryData.notes || []
+  }
+
+  addTheoreticalNote(noteObj) {
+    const source = (this._theoryData.sources || []).find(s => s.id === noteObj.sourceId)
+    const citationText = (noteObj.citationText || source?.abntCitation || '').trim()
+    if (!citationText) {
+      throw new Error('É obrigatório informar ou vincular uma fonte/citação para registrar uma anotação teórica.')
+    }
+    const newNote = {
+      id: noteObj.id || `note-${Date.now()}`,
+      title: noteObj.title,
+      phase: noteObj.phase || 'Pré-Análise',
+      content: noteObj.content,
+      sourceId: noteObj.sourceId || source?.id || '',
+      citationText,
+      createdDate: new Date().toISOString().split('T')[0]
+    }
+    this._theoryData.notes = this._theoryData.notes || []
+    this._theoryData.notes.unshift(newNote)
+    this._saveTheoryData(this._theoryData)
+    return newNote
+  }
+
+  removeTheoreticalNote(noteId) {
+    this._theoryData.notes = (this._theoryData.notes || []).filter(n => n.id !== noteId)
+    this._saveTheoryData(this._theoryData)
+  }
+
+  resetTheoryToDefault() {
+    this._theoryData = {
+      sources: JSON.parse(JSON.stringify(BARDIN_OPEN_ACCESS_SOURCES)),
+      notes: JSON.parse(JSON.stringify(INITIAL_STUDY_NOTES))
+    }
+    this._saveTheoryData(this._theoryData)
   }
 }
 

@@ -1,0 +1,225 @@
+#+TITLE: Fundamentação Teórica: Análise de Conteúdo segundo Laurence Bardin
+#+AUTHOR: Wagner Marques & Antigravity Pair Programming
+#+DATE: [2026-11-13]
+#+DESCRIPTION: Estudo teórico-metodológico sobre a Análise de Conteúdo de Laurence Bardin para orientar o design e o desenvolvimento do framework fzl-caqdas
+#+STARTUP: overview indent
+
+* 🏛️ Nota de Separação Documental
+Este documento concentra exclusivamente o **estudo teórico e metodológico** da Análise de Conteúdo segundo Laurence Bardin e fontes acadêmicas complementares de acesso aberto, com todas as citações formais.
+A documentação técnica de utilização do software fica separada em [[../uso/manual-do-aplicativo.org][docs/uso/manual-do-aplicativo.org]].
+
+* 1. Introdução Epistemológica e Definição Clássica
+
+** 1.1 Quem é Laurence Bardin
+Laurence Bardin é professora-pesquisadora de Psicologia na Universidade Paris V (René Descartes), autora da obra seminal /L'Analyse de Contenu/ (publicada originalmente em francês em 1977; edição de referência em língua portuguesa: *Análise de Conteúdo*, Edições 70 / Almedina, 2011).
+
+** 1.2 Definição de Análise de Conteúdo
+Segundo Bardin (2011, p. 48), a Análise de Conteúdo é:
+
+#+BEGIN_QUOTE
+"Um conjunto de técnicas de análise das comunicações visando obter, por procedimentos sistemáticos e objetivos de descrição do conteúdo das mensagens, indicadores (quantitativos ou não) que permitam a inferência de conhecimentos relativos às condições de produção/recepção (variáveis inferidas) destas mensagens."
+#+END_QUOTE
+
+** 1.3 Natureza Qualitativa vs. Quantitativa na Abordagem de Bardin
+- *Abordagem Qualitativa*: foca na compreensão profunda e interpretação de significados, experiências, crenças e perspectivas (entrevistas, observações, documentos, áudios, vídeos, imagens). A presença ou ausência de uma característica ou tema pode ser mais reveladora do que a mera contagem numérica.
+- *Abordagem Quantitativa dentro da Análise de Conteúdo*: utiliza a frequência de aparição de unidades de registro (enumeração) para mensurar a força de um código ou categoria no *corpus*.
+
+** 1.4 Modalidades de Análise de Conteúdo previstas por Bardin
+Embora a maioria das pesquisas acadêmicas utilize a **Análise Categorial (Temática)** (~95% dos estudos, conforme observado no vídeo didático de referência), Bardin (2011) descreve diversas técnicas que devem ser explicitadas na seção de método de um trabalho científico:
+1. *Análise Categorial / Temática*: desmembramento do texto em unidades (temas) e reagrupamento analógico em categorias.
+2. *Análise de Avaliação (ou Representacional)*: mede atitudes do locutor diante dos objetos de que fala (direção favorável/desfavorável e intensidade).
+3. *Análise da Enunciação*: trata a comunicação como processo em elaboração (análise do estilo, lógica, lapsos, figuras de retórica e sequência discursiva).
+4. *Análise Proposicional do Discurso*: identifica proposições-núcleo e os referenciais internos do sujeito.
+5. *Análise da Expressão*: analisa indicadores formais da linguagem (vocabulário, comprimento de frases, hesitações).
+6. *Análise das Relações (Coocorrências e Contingências)*: investiga a associação ou exclusão simultânea de dois ou mais temas/códigos em um mesmo segmento de texto.
+
+* 2. Os Três Polos Cronológicos de Bardin
+
+Bardin (2011) estrutura a organização da Análise de Conteúdo em três grandes polos cronológicos (ou fases fundamentais):
+
+** 2.1 Polo 1 — Pré-Análise
+Fase de organização, operacionalização e sistematização das ideias iniciais. Compõe-se de cinco atividades centrais:
+
+1. *Leitura Flutuante*: primeiro contato aberto e exaustivo com os documentos, deixando-se invadir por impressões, hipóteses e orientações preliminares, sem codificação rígida ainda.
+2. *Escolha dos Documentos (Constituição do Corpus)*: demarcação do universo de documentos a analisar. Deve obedecer rigorosamente às **4 Regras de Bardin para Constituição do Corpus**:
+   - *Regra da Exaustividade*: uma vez definido o campo do *corpus*, todos os elementos desse campo devem ser considerados, sem omissões arbitrárias ou seletivas (não deixar de fora uma entrevista ou trecho por conveniência).
+   - *Regra da Representatividade*: quando o universo é vasto, a amostragem deve ser uma parte representativa do conjunto inicial.
+   - *Regra da Homogeneidade*: os documentos retidos devem obedecer a critérios precisos de escolha e não apresentar demasiada singularidade fora desses critérios (mesma técnica de coleta, temas e perfis comparáveis).
+   - *Regra da Pertinência*: os documentos escolhidos devem ser adequados enquanto fonte de informação para corresponder diretamente aos objetivos que suscitam a análise.
+3. *Formulação das Hipóteses e dos Objetivos*: definição clara de qual pergunta de pesquisa ou suposição provisória a análise procura responder (nem sempre a análise exploratória parte de hipóteses fechadas; pode partir de questões norteadoras).
+4. *Referenciação dos Índices e Elaboração de Indicadores*: escolha dos índices (ex.: menção explícita de um tema) e dos respectivos indicadores (ex.: frequência absoluta e relativa com que o tema aparece no relato).
+5. *Preparação do Material*: transcrição fiel de áudios/vídeos, revisão formal, edição padronizada e anonimização dos informantes (ex.: ~Aluno 1~, ~Corredor C4~, ~Participante P2~).
+
+** 2.2 Polo 2 — Exploração do Material
+Fase longa, minuciosa e sistemática em que as decisões tomadas na pré-análise são aplicadas ao *corpus*. Consiste em operações de **codificação**, **recorte** e **categorização**.
+
+*** A. Codificação
+Transformação sistemática dos dados brutos do texto por recorte, agregação e enumeração, visando atingir uma representação do conteúdo ou da sua expressão. Compreende três escolhas:
+
+1. *O Recorte — Unidade de Registro (UR) vs. Unidade de Contexto (UC)*:
+   - *Unidade de Registro (UR)*: é a unidade de significação codificada. Corresponde ao segmento de conteúdo considerado como unidade de base para categorização e contagem frequencial. Pode ser:
+     - a *palavra* (palavra-chave ou palavra-tema);
+     - o *tema* (unidade de significação complexa, geralmente uma frase ou núcleo de sentido — unidade mais usada na análise temática);
+     - o *objeto ou referente*, o *personagem*, o *acontecimento* ou o *documento*.
+   - *Unidade de Contexto (UC)*: é a unidade de compreensão para codificar a unidade de registro. Corresponde ao segmento mais amplo da mensagem (como o parágrafo inteiro, a resposta completa à pergunta ou a entrevista), cujas dimensões (superiores às da UR) são ótimas para que se possa compreender a significação exata da UR e evitar ambiguidades.
+
+2. *A Enumeração (Regras de Contagem)*:
+   - *Presença ou ausência*: indica se um código aparece ou não no documento.
+   - *Frequência simples*: número de vezes que uma UR aparece (mostra a força/peso do código ou categoria).
+   - *Frequência ponderada*: atribuição de peso diferenciador segundo a importância do elemento.
+   - *Intensidade e Direção*: grau de convicção e polaridade (positiva, negativa, neutra).
+   - *Ordem e Coocorrência*: sequência de aparição e presença simultânea de dois ou mais códigos numa mesma Unidade de Contexto.
+
+3. *Abordagens de Codificação (Dedutiva vs. Indutiva vs. Mista)* (Câmara, 2013; Vídeo Metodologia Descomplicada):
+   - *Codificação Dedutiva (Grade Fechada / a priori)*: os códigos derivam previamente do referencial teórico da pesquisa (literatura já publicada).
+   - *Codificação Indutiva (Grade Aberta / a posteriori)*: os códigos emergem diretamente das falas e dados empíricos, trazendo achados novos ainda não descritos na literatura revisada.
+   - *Codificação Mista*: parte-se de categorias/códigos preliminares da literatura, mas mantém-se abertura para criar novos códigos que surjam dos dados.
+
+*** B. Categorização
+Operação de classificação de elementos constitutivos de um conjunto por diferenciação e, em seguida, por reagrupamento segundo o gênero (analogia), utilizando critérios previamente definidos. Os códigos são agrupados em "caixinhas" conceituais maiores (Categorias e, quando necessário, Subcategorias).
+
+- *Critérios de Categorização*:
+  - *Semântico* (categorias temáticas — ex.: todos os códigos que tratam de "ansiedade", "medo" e "pressão" agrupados em ~Reações Psicológicas~);
+  - *Sintático* (verbos, adjetivos);
+  - *Léxico* (classificação das palavras pelo sentido e emparelhamento de sinônimos);
+  - *Expressivo* (perturbações da linguagem).
+
+- *As 5 Regras de Qualidade das Categorias segundo Bardin (2011)*:
+  1. *Exclusão Mútua*: cada elemento (código / unidade de registro) não pode existir em mais de uma divisão/categoria na mesma dimensão de análise. (Um mesmo código não deve ser classificado simultaneamente em duas categorias concorrentes).
+  2. *Homogeneidade*: um único princípio de classificação deve governar a organização de um mesmo conjunto de categorias. Não se misturam níveis de abstração ou critérios distintos no mesmo nível.
+  3. *Pertinência*: uma categoria é pertinente quando está adaptada ao material de análise escolhido e pertence ao quadro teórico definido pelo pesquisador.
+  4. *Objetividade e Fidelidade*: as diferentes partes de um mesmo material, às quais se aplica a mesma grade categorial, devem ser codificadas da mesma maneira, mesmo quando submetidas a várias análises ou múltiplos codificadores (exige definições operacionais explícitas no Livro de Códigos).
+  5. *Produtividade*: um conjunto de categorias é produtivo se fornece resultados férteis em índices de inferência, em hipóteses novas e em dados exatos.
+
+** 2.3 Polo 3 — Tratamento dos Resultados Obtidos, Inferência e Interpretação
+Os resultados brutos são tratados de maneira a tornarem-se significativos e válidos:
+
+1. *Tratamento Descritivo e Síntese*:
+   - Construção de quadros de resultados, tabelas de frequência absoluta ($n$) e relativa ($\%$), diagramas de força e redes conceituais relacionando tema central -> categorias -> subcategorias -> códigos.
+   - Seleção de excertos/citações literais representativas das falas dos participantes para ilustrar cada categoria na redação científica.
+2. *A Inferência*:
+   - Operação lógica pela qual o pesquisador admite uma proposição em virtude da sua ligação com outras proposições já aceitas como verdadeiras.
+   - Permite ir além da descrição do conteúdo manifesto para alcançar o sentido latente e compreender as condições de produção/recepção da mensagem (polos: *emissor*, *receptor*, *mensagem* e *canal/suporte*).
+3. *A Interpretação Teórica*:
+   - Confronto sistemático dos achados empíricos com o referencial teórico levantado na pesquisa (confirmando resultados anteriores da literatura ou evidenciando descobertas originais).
+
+* 3. Fichamento do Vídeo Principal e da Playlist (~Canal Metodologia Descomplicada~)
+
+** 3.1 Citação Formal da Fonte Audiovisual Principal
+#+BEGIN_QUOTE
+CANAL METODOLOGIA DESCOMPLICADA (Simplified Methodology). *O QUE É e COMO FAZER ANÁLISE DE CONTEÚDO de BARDIN: Explicação e Exemplos passo a passo.* YouTube, 12 set. 2023. Duração: 28min40s. Disponível em: https://www.youtube.com/watch?v=3fvAcOrcr5Y. Acesso em: 13 nov. 2026.
+#+END_QUOTE
+
+** 3.2 Síntese Operacional do Vídeo (~3fvAcOrcr5Y~)
+O vídeo apresenta de forma didática a **Análise Temática de Bardin**, destacando que:
+- É imprescindível nomear explicitamente a autora como **professora Laurence Bardin** (autora da Universidade de Paris, mulher — corrigindo o equívoco frequente de referi-la no masculino).
+- Na seção de Metodologia, o pesquisador não deve apenas citar "análise de conteúdo de Bardin", mas especificar qual modalidade utiliza (ex.: *análise de conteúdo temática por frequência*) e descrever o passo a passo seguido.
+- O fluxo operacional é apresentado em **4 etapas práticas**:
+  1. *Preparação e Seleção do Material*: transcrição literal das entrevistas/documentos aderentes ao objetivo do estudo.
+  2. *Codificação*: leitura atenta, grifo de trechos significativos e atribuição de códigos (palavras ou expressões curtas que sintetizam o sentido do trecho). Códigos podem originar-se do referencial teórico (ex.: confirmação de Santana & Ribeiro, 2023) ou emergir diretamente das falas (novas descobertas). Cada reaparição do código recebe nova marcação para medir sua força/frequência.
+  3. *Categorização*: agrupamento lógico dos códigos em "caixinhas" maiores (categorias e eventuais subcategorias). Regra explícita destacada no vídeo: *cada código pertence a uma única categoria* (regra de exclusão mútua).
+  4. *Análise, Tratamento e Interpretação*: síntese em tabelas de frequência/percentual, diagramas ou redes, apresentação de trechos literais dos participantes anonimizados e discussão dialogada com os autores do referencial teórico.
+
+** 3.3 Os 3 Exemplos Práticos Detalhados no Vídeo
+
+*** Exemplo 1 — Demonstração Prática de Codificação no Word
+- *Tema simulado*: *"Análise das reações físicas e psicológicas de alunos durante exames: um estudo qualitativo"*.
+- *Pergunta norteadora*: *"Como você se sente quando está prestes a fazer uma prova importante?"*
+- *Transcrição codificada (Aluno 1)*:
+  - *"eu costumo sentir meu coração batendo mais rápido"* -> código `Batimento cardíaco acelerado`
+  - *"meu estômago ficou meio dolorido, embrulhado"* -> código `Dor no estômago`
+  - *"é como se eu tivesse nervoso"* -> código `Nervosismo`
+  - *"minhas mãos podem ficar um pouco trêmulas"* -> código `Tremor`
+  - *"uma mistura de ansiedade e medo"* -> códigos `Ansiedade` e `Medo`
+  - *"há essa pressão para ir bem na prova, o que me deixa um pouco ansioso"* -> códigos `Pressão` (emergente/novo) e `Ansiedade` (2ª ocorrência)
+  - *"eu fico com medo de esquecer o que eu estudei"* -> código `Medo` (2ª ocorrência)
+- *Agrupamento em Categorias (Simulação de 10 alunos)*:
+  | Categoria | Códigos Incluídos | Frequência ($n$) | Percentual ($\%$) | Exemplo de Excerto |
+  |-----------+-------------------+------------------+-------------------+--------------------|
+  | Reações Físicas | Batimento cardíaco acelerado, Dor no estômago, Tremor | 3 | 27% | *"Eu costumo sentir meu coração batendo mais rápido"* |
+  | Reações Psicológicas | Nervosismo, Ansiedade, Medo, Pressão | 8 | 73% | *"Há essa pressão para ir bem na prova, o que me deixa um pouco ansioso"* |
+
+*** Exemplo 2 — Artigo 1 Analisado no Vídeo (Albuquerque et al., 2018)
+- *Estudo*: *"Corrida de rua: uma análise qualitativa dos aspectos que motivam a sua prática"*.
+- *Procedimentos*: 9 entrevistados (entrevista semiestruturada, questionário sociodemográfico), transcrição assistida por software e Análise de Conteúdo Temática por Frequência nas 3 etapas de Bardin.
+- *Resultados estruturados em 2 categorias*:
+  - *Motivações Extrínsecas*: `Influência de familiares e amigos / terceiros` (5 ocorrências — posição mais alta no diagrama de força).
+  - *Motivações Intrínsecas*: `Saúde` (3 ocorrências), `Desafio` (2 ocorrências), `Atividade física` (1 ocorrência).
+- *Discussão*: articula o código mais forte (`Influência de terceiros`) com literatura prévia (Franco) e comprova com citação direta do informante anonimizado (`Corredor C4`: *"dá um bem-estar para a pessoa, você socializa, você conhece gente..."*).
+
+*** Exemplo 3 — Artigo 2 Analisado no Vídeo (Vitali et al., 2019)
+- *Estudo*: *"Prumo, Guyton e caminho: polissemia da saúde na perspectiva dos estudantes universitários"*.
+- *Organização em rede (ATLAS.ti)*: **3 categorias**, **7 subcategorias** e **20 códigos**.
+  - Categorias: (1) Saúde enquanto funcionamento adequado das partes do organismo; (2) Saúde enquanto busca de equilíbrio no caminho; (3) Saúde enquanto busca [...].
+- *Tabela quantificada de ocorrências*:
+  - Subcategoria `Bem-estar`: 122 citações (52,5% das ocorrências).
+  - Subcategoria `Equilíbrio`: 34 citações.
+
+** 3.4 Mapeamento Completo da Playlist (~PLKL-OaADMnAh-bbrCwTb5SQTpjbCN6Zse~)
+Playlist completa do *Canal Metodologia Descomplicada* para aprofundamento modular de cada fase no projeto:
+
+| # | ID do Vídeo | Título | Link Direto | Foco no Projeto |
+|---+-------------+--------+-------------+-----------------|
+| 1 | ~3fvAcOrcr5Y~ | O QUE É e COMO FAZER ANÁLISE DE CONTEÚDO de BARDIN: Explicação e Exemplos passo a passo | https://www.youtube.com/watch?v=3fvAcOrcr5Y | Visão geral das etapas + 3 exemplos |
+| 2 | ~pBThixMwUy4~ | Análise de Conteúdo de Bardin: Quais os Tipos de Materiais que Posso Analisar? Explicação e Exemplos | https://www.youtube.com/watch?v=pBThixMwUy4 | Corpus e tipos de fontes (Fase 2) |
+| 3 | ~c1QPPYOB6Ig~ | Bardin's Content Analysis: Difference Between Unit of Meaning and Unit of Context | https://www.youtube.com/watch?v=c1QPPYOB6Ig | UR vs. UC (Codificação — Fase 4) |
+| 4 | ~s_0XF17BFas~ | Como fazer CODIFICAÇÃO na ANÁLISE DE CONTEÚDO de BARDIN: Explicação e Exemplo prático passo a passo | https://www.youtube.com/watch?v=s_0XF17BFas | Recorte e códigos (Fase 4) |
+| 5 | ~we5NhWzKD_w~ | How to create CATEGORIES in Bardin's CONTENT ANALYSIS: Step-by-step explanation and examples | https://www.youtube.com/watch?v=we5NhWzKD_w | Categorização (Fase 5) |
+| 6 | ~h4T-MkfY2r4~ | Bardin's Content Analysis: Deductive Analysis and Inductive Analysis / Explanation and Examples | https://www.youtube.com/watch?v=h4T-MkfY2r4 | Grade fechada vs. aberta (Fase 5) |
+| 7 | ~xsbbWsxEfqY~ | Análise de Conteúdo de Bardin: Como Escrever a Metodologia? / Explicação e Exemplo no Word | https://www.youtube.com/watch?v=xsbbWsxEfqY | Relatório metodológico (Fase 9) |
+| 8 | ~qQr890wT7xY~ | ANÁLISE DE CONTEÚDO DE BARDIN – COMO ESCREVER OS RESULTADOS E DISCUSSÕES / EXEMPLOS | https://www.youtube.com/watch?v=qQr890wT7xY | Inferência e discussão (Fase 9) |
+| 9 | ~L0S5V3ZLN84~ | Examples of Bardin Content Analysis in TCC, Dissertation and Thesis | https://www.youtube.com/watch?v=L0S5V3ZLN84 | Exemplos acadêmicos reais |
+
+* 4. Fontes Acadêmicas de Acesso Aberto (Open Access) para Decisão do Framework
+
+Abaixo estão reunidas fontes de acesso livre em repositórios acadêmicos (SciELO, PePSIC, Unicamp, UEL, Qualitas) e a obra fundacional de Bardin, com citações ABNT prontas para que possamos decidir quais adotar como núcleo formal de engenharia de requisitos metodológicos do *fzl-caqdas*:
+
+** 4.1 Obra Fundacional (Referência Clássica)
+- **BARDIN, Laurence.** *Análise de conteúdo.* Tradução de Luís Antero Reto e Augusto Pinheiro. São Paulo: Edições 70, 2011. 279 p. (Obra original: *L'Analyse de contenu*, Paris: Presses Universitaires de France, 1977).
+  - *Papel no Framework*: Definição canônica das 3 fases, das 4 regras do *corpus*, das Unidades de Registro/Contexto, regras de enumeração e das 5 regras de qualidade das categorias.
+
+** 4.2 Artigos Metodológicos de Acesso Aberto (Open Access)
+1. **SILVA, Andressa Hennig; FOSSÁ, Maria Ivete Trevisan.** Análise de conteúdo: exemplo de aplicação da técnica para análise de dados qualitativos. *Qualitas Revista Eletrônica*, Campina Grande, v. 17, n. 1, p. 1–14, 2015. DOI: https://doi.org/10.18391/qualitas.v16i1.2113.
+   - *Acesso*: Livre (Portal de Periódicos UEPB).
+   - *Contribuição ao Software*: Guia operacional passo a passo de como transformar unidades de registro em categorias iniciais, intermediárias e finais (funil categorial em 3 níveis).
+
+2. **MOZZATO, Anelise Rebelato; GRZYBOVSKI, Denize.** Análise de conteúdo como técnica de análise de dados qualitativos no campo da administração: potencial e desafios. *RAC - Revista de Administração Contemporânea*, Curitiba, v. 15, n. 4, p. 731–747, jul./ago. 2011. Disponível em SciELO: https://doi.org/10.1590/S1415-65552011000400010.
+   - *Acesso*: Aberto (SciELO Brasil).
+   - *Contribuição ao Software*: Critérios de rigor científico, validade, confiabilidade, auditoria de decisões (trilha de memos) e superação de leituras puramente positivistas/mecânicas.
+
+3. **CÂMARA, Rosana Hoffman.** Análise de conteúdo: da teoria à prática em pesquisas sociais aplicadas às organizações. *Gerais: Revista Interinstitucional de Psicologia*, Belo Horizonte, v. 6, n. 2, p. 179–191, jul./dez. 2013. Disponível em PePSIC/BVS: http://pepsic.bvsalud.org/scielo.php?script=sci_arttext&pid=S1983-82202013000200003.
+   - *Acesso*: Aberto (PePSIC / BVS-Psi).
+   - *Contribuição ao Software*: Distinção prática entre grades de categorias **fechadas** (*a priori*), **abertas** (*a posteriori*) e **mistas**, além do modelo de quadro analítico estruturado.
+
+4. **CAREGNATO, Rita Catalina Aquino; MUTTI, Regina.** Pesquisa qualitativa: análise de discurso versus análise de conteúdo. *Texto & Contexto - Enfermagem*, Florianópolis, v. 15, n. 4, p. 679–684, out./dez. 2006. Disponível em SciELO: https://doi.org/10.1590/S0104-07072006000400017.
+   - *Acesso*: Aberto (SciELO Brasil).
+   - *Contribuição ao Software*: Delimitação epistemológica clara entre *Análise de Conteúdo* (busca da essência/conteúdo e decodificação de significados em categorias) e *Análise de Discurso* (linha francesa de Pêcheux, foco nas condições sócio-históricas de produção do discurso e assujeitamento).
+
+5. **URQUIZA, Marconi de Albuquerque; MARQUES, Denilson Bezerra.** Análise de conteúdo em termos de Bardin aplicada à comunicação corporativa sob o signo de uma abordagem teórico-empírica. *Entretextos*, Londrina, v. 16, n. 1, p. 115–144, jan./jun. 2016. Disponível em Portal UEL: https://doi.org/10.5433/1519-5392.2016v16n1p115.
+   - *Acesso*: Aberto (UEL).
+   - *Contribuição ao Software*: Taxonomia detalhada de Unidades de Registro, Unidades de Contexto e Regras de Enumeração (presença, frequência, intensidade, direção, ordem e coocorrência).
+
+** 4.3 Artigos Empíricos de Acesso Aberto Citados no Vídeo (Modelos de Saída/Relatório)
+6. **ALBUQUERQUE, Dienyffer Bernardo de et al.** Corrida de rua: uma análise qualitativa dos aspectos que motivam a sua prática. *Conexões: Educação Física, Esporte e Saúde*, Campinas, v. 16, n. 3, p. 331–346, 2018. Disponível em Unicamp: https://doi.org/10.20396/conex.v16i3.8653520.
+   - *Acesso*: Aberto (Periódicos Unicamp).
+   - *Contribuição ao Software*: Modelo de relatório de categorias por frequência com diagrama de força e citação de informantes anonimizados.
+
+7. **VITALI, Marieli Mezari et al.** Prumo, Guyton e caminho: polissemia da saúde na perspectiva dos estudantes universitários. *Physis: Revista de Saúde Coletiva*, Rio de Janeiro, v. 29, n. 2, e290209, 2019. Disponível em SciELO: https://doi.org/10.1590/S0103-73312019290209.
+   - *Acesso*: Aberto (SciELO Brasil).
+   - *Contribuição ao Software*: Modelo de hierarquia em 3 níveis (Categorias -> Subcategorias -> Códigos), redes semânticas e tabelas combinadas de frequência absoluta ($n$) e percentual ($\%$).
+
+* 5. Matriz de Tradução: Teoria de Bardin -> Requisitos do Software ~fzl-caqdas~
+
+Para que o desenvolvimento do aplicativo seja metodologicamente dirigido e seguro, cada construto de Bardin traduz-se diretamente em requisitos funcionais do *fzl-caqdas*:
+
+| Construto / Etapa de Bardin | Requisito no Software ~fzl-caqdas~ |
+|-----------------------------+-------------------------------------|
+| **Leitura Flutuante (Pré-Análise)** | Modo de leitura limpa dos documentos sem poluição visual, permitindo registrar primeiras impressões em memos livres antes de codificar. |
+| **4 Regras do Corpus (Exaustividade, Representatividade, Homogeneidade, Pertinência)** | Checklist de validação do *Corpus* na tela de Fontes/Projetos, com controle de inclusão/exclusão justificada e metadados homogêneos de participantes. |
+| **Unidade de Registro (UR) vs. Unidade de Contexto (UC)** | Ao selecionar um trecho (UR), o software deve capturar automaticamente o parágrafo/resposta ao redor como Unidade de Contexto (UC) para preservar o sentido na leitura posterior de excertos. |
+| **Codificação Dedutiva vs. Indutiva** | Suporte a definição prévia de códigos no Codebook (*a priori*) e criação rápida de novos códigos emergentes durante a leitura do texto (*a posteriori*), com marcador de origem (~dedutivo~ / ~indutivo~). |
+| **Regras das Categorias (Exclusão Mútua, Homogeneidade, Objetividade)** | Alerta ou validação configurável para evitar que um mesmo código seja alocado a duas categorias conflitantes na mesma dimensão; campo obrigatório de *Definição Operacional* para fidelidade intercodificadores. |
+| **Funil Categorial (Silva & Fossá, 2015)** | Suporte à evolução em 3 estágios: códigos iniciais -> subcategorias intermediárias -> categorias finais. |
+| **Enumeração & Frequências** | Contagem automática absoluta ($n$) e percentual ($\%$) por código, subcategoria e categoria, tanto por documento quanto no *corpus* global. |
+| **Inferência & Diário Reflexivo (Mozzato & Grzybovski, 2011)** | Memos analíticos vinculados aos polos (emissor, receptor, mensagem, canal) e trilha cronológica de decisões metodológicas para auditoria. |
+| **Apresentação de Resultados & Redes** | Exportação de tabelas de frequência + excertos literais anonimizados (ex.: ~Participante P1~), diagramas de rede (modelo Vitali et al., 2019) e scripts Python/Pandas para análise complementar. |
