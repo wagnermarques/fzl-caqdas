@@ -41,12 +41,13 @@ Fase 10: Módulo de IA com Supervisão         [░░░░░░░░░░�
 
 * 🚀 Fases de Desenvolvimento e Tarefas (Task Breakdown)
 
-** FASE 1: Fundação, Scaffolding e AppShell FZL [2/2]
+** FASE 1: Fundação, Scaffolding e AppShell FZL [3/3]
 :PROPERTIES:
 :CATEGORY: scaffolding
 :END:
 - [X] Tarefa 1.1: Inicialização do repositório Git, submódulo ~fzl-fund-ui~ e scripts de links simbólicos (~scripts/setup-links.mjs~).
 - [X] Tarefa 1.2: Configuração de ~package.json~, ~vite.config.js~, ~index.html~ e compilação inicial de tokens e componentes Lit.
+- [X] Tarefa 1.3: Publicação do repositório remoto ~wagnermarques/fzl-caqdas~ e pipeline de CI/CD para GitHub Pages (~https://wagnermarques.github.io/fzl-caqdas/~).
 
 ** FASE 2: Organização de Dados e Importação de Arquivos [0/4]
 :PROPERTIES:
