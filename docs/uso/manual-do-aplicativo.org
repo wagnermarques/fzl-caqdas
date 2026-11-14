@@ -37,7 +37,10 @@ A navegação principal é feita pelo menu lateral (Drawer) do *FZL AppShell*, o
 
 ** 2.1 Corpus & Materiais
 - *Visão Geral (Dashboard)* (`#/`): Exibe contadores de documentos/entrevistas, códigos criados, segmentos codificados e memos registrados, além de atalhos rápidos.
-- *Fontes & Documentos* (`#/fontes`): Permite visualizar os documentos importados e cadastrar novas entrevistas/documentos textuais com identificação do participante/informante.
+- *Fontes & Documentos* (`#/fontes`): Ambiente completo de gestão do corpus dividido em três abas:
+  1. *Gerenciador de Arquivos (`<fzl-file-manager>`)*: Navegador estilo filesystem com alternância entre Tabela e Grade, pastas hierárquicas (`/entrevistas`, `/documentos`), status de sincronização, leitor embutido (DOCX, Markdown, PDF, TXT) com busca, zoom e botão para envio direto à Área de Codificação.
+  2. *Upload & Importação (`<fzl-document-picker>`)*: Ingestão de arquivos Word (`.docx` com leitor nativo OOXML), PDFs, Markdown, TXT e planilhas (CSV/JSON), com suporte a drag & drop, seleção no celular e File System Access API no desktop.
+  3. *Digitação Manual de Transcrição*: Formulário para inserção ou colagem direta de atas e entrevistas.
 
 ** 2.2 Análise Qualitativa
 - *Área de Codificação* (`#/codificacao`): Selecione um documento, destaque trechos do texto com o cursor do mouse, escolha um código no seletor e clique em **Codificar Trecho** para criar o excerto vinculado.

@@ -25,11 +25,11 @@ Projetado como um PWA de alta performance e acessibilidade, utiliza Web Componen
 * 📊 Dashboard de Progresso (Status Geral)
 
 #+BEGIN_EXAMPLE
-Progresso Geral: [ 18% ]
-[███░░░░░░░░░░░░░░░░░]
+Progresso Geral: [ 25% ]
+[█████░░░░░░░░░░░░░░░]
 Fase 1: Fundação & AppShell Scaffold        [████████████████████] 100% DONE
 Fase 1.5: Fundamentação Teórica (Bardin)    [████████████████████] 100% DONE
-Fase 2: Gestão de Projetos & Importação      [░░░░░░░░░░░░░░░░░░░░]   0% TODO
+Fase 2: Gestão de Projetos & Importação      [██████████░░░░░░░░░░]  50% IN_PROGRESS
 Fase 3: Sistema de Transcrição & Mídia       [░░░░░░░░░░░░░░░░░░░░]   0% TODO
 Fase 4: Motor de Codificação & Excertos      [░░░░░░░░░░░░░░░░░░░░]   0% TODO
 Fase 5: Livro de Códigos & Categorização     [░░░░░░░░░░░░░░░░░░░░]   0% TODO
@@ -61,7 +61,7 @@ Base teórico-metodológica documentada e isolada da documentação técnica de 
 - [X] Tarefa 1.5.3: Separação estrita entre documentação de uso do aplicativo ([[file:docs/uso/manual-do-aplicativo.org][docs/uso/manual-do-aplicativo.org]] e rota ~#/documentacao-app~) e acervo teórico (rota ~#/teoria-bardin~ e armazenamento isolado ~fzl_caqdas_theory_study_v1~).
 - [X] Tarefa 1.5.4: Implementação do catálogo interativo de seleção de fontes e caderno de anotações teóricas com citação obrigatória em ~<caqdas-theory-view>~.
 
-** FASE 2: Organização de Dados e Importação de Arquivos (Polo 1 de Bardin: Pré-Análise) [0/4]
+** FASE 2: Organização de Dados e Importação de Arquivos (Polo 1 de Bardin: Pré-Análise) [2/4]
 :PROPERTIES:
 :CATEGORY: data-management
 :END:
@@ -73,13 +73,11 @@ Permitir que o pesquisador crie projetos, defina participantes/casos, execute a 
 - [ ] TODO Tarefa 2.2: View de Projetos e Casos (~<caqdas-projects-view>~)
   - Criar, clonar, arquivar e alternar entre projetos de pesquisa.
   - Atribuição de documentos a pastas temáticas e participantes.
-- [ ] TODO Tarefa 2.3: Módulo de Importação Multifonte (~<caqdas-import-dialog>~)
-  - Suporte a texto simples (.txt, .md), documentos Word (.docx) e PDFs.
-  - Suporte a planilhas com respostas abertas de questionários (.csv, .xlsx).
-  - Suporte a arquivos multimídia (áudio .mp3, .wav, .m4a; vídeo .mp4, .webm; imagens .png, .jpg).
-- [ ] TODO Tarefa 2.4: Navegador de Fontes & Documentos (~<caqdas-sources-view>~)
-  - Visualização em tabela (~<fzl-lit-data-grid>~) e em cartões (~<fzl-lit-card-list>~).
-  - Metadados, contagem de palavras e resumo de cada documento.
+- [X] Tarefa 2.3: Módulo de Importação Multifonte e Upload (~<fzl-document-picker>~)
+  - Suporte a seleção de arquivos e pastas (Desktop & Mobile), drag & drop, leitura nativa de Word (.docx via parser OOXML embutido), PDFs, Markdown (.md), texto simples (.txt) e tabelas (.csv, .json).
+  - Inclusão automática dos documentos selecionados no Corpus da pesquisa.
+- [X] Tarefa 2.4: Navegador e Gerenciador de Fontes & Documentos (~<fzl-file-manager>~)
+  - Visualização em tabela e grade com badges de status (~synced~, ~bookmarked-only~, ~uploaded-only~), navegação em pastas hierárquicas (~/entrevistas~, ~/documentos~), busca textual e leitor embutido com busca, zoom e botão para envio à área de codificação.
 
 ** FASE 3: Transcrição Sincronizada de Áudio e Vídeo [0/3]
 :PROPERTIES:
