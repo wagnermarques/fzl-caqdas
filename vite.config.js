@@ -8,7 +8,11 @@ export default defineConfig(
       ...appshell,
       base: './',
       includeAssets: ['favicon.svg'],
-      workbox: {},
+      workbox: {
+        skipWaiting: true,
+        clientsClaim: true,
+        cleanupOutdatedCaches: true,
+      },
       manifest: {
         id: 'fzl-caqdas-researcher',
         name: 'Qualitative Research Assistant — CAQDAS',
