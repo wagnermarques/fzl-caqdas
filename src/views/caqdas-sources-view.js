@@ -524,9 +524,15 @@ export class CaqdasSourcesView extends LitElement {
 
   _updateCloudConfig(patch) {
     this.cloudConfig = researchStorage.saveCloudSyncConfig(patch)
-    if (typeof window !== 'undefined') {
-      if (patch.googleClientId !== undefined) window.__FZL_GOOGLE_CLIENT_ID__ = patch.googleClientId
-      if (patch.microsoftClientId !== undefined) window.__FZL_MICROSOFT_CLIENT_ID__ = patch.microsoftClientId
+    // Sincroniza dinamicamente a configuração nativa de socialAuth do AppShell
+    if (typeof authService.configureSocialAuth === 'function') {
+      const currentSocial = authService.getSocialAuthConfig?.() || {}
+      authService.configureSocialAuth({
+        ...currentSocial,
+        ...(patch.googleClientId !== undefined ? { googleClientId: patch.googleClientId } : {}),
+        ...(patch.microsoftClientId !== undefined ? { microsoftClientId: patch.microsoftClientId } : {}),
+        ...(patch.microsoftTenantId !== undefined ? { microsoftTenantId: patch.microsoftTenantId } : {}),
+      })
     }
     this._bindControllers()
     this.requestUpdate()

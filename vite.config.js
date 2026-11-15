@@ -1,11 +1,12 @@
 import { defineConfig, mergeConfig } from 'vite'
+import appshell from './appshell.config.js'
 import { appshellConfig } from './fzl-fund-ui/appshell-lit/vite/preset.js'
 
 export default defineConfig(
   mergeConfig(
     appshellConfig({
+      ...appshell,
       base: './',
-      storagePrefix: 'fzl-caqdas',
       includeAssets: ['favicon.svg'],
       workbox: {},
       manifest: {

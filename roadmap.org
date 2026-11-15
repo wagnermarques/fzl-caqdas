@@ -80,6 +80,7 @@ Permitir que o pesquisador crie projetos, defina participantes/casos, execute a 
   - Visualização em tabela e grade com badges de status (~synced~, ~bookmarked-only~, ~uploaded-only~), navegação em pastas hierárquicas (~/entrevistas~, ~/documentos~), busca textual e leitor embutido com busca, zoom e botão para envio à área de codificação.
 - [X] Tarefa 2.5: Autenticação Social (Google & Microsoft) e Sincronização em Nuvem (Google Drive & Google Docs)
   - Login social client-side com contas públicas do Google (GIS) e Microsoft (MSAL / PKCE) via ~<fzl-social-login>~ e AppShell ~auth-view~.
+  - Alinhamento estrito ao modelo oficial do AppShell: configuração declarativa nativa em ~appshell.config.js~ com objeto ~socialAuth~, compilação de constantes de build via Vite preset e injeção transparente no ~authService~ do shell com suporte a sobrescrita dinâmica por variáveis de ambiente (~VITE_APPSHELL_SOCIAL_AUTH_*~) ou interface (~authService.configureSocialAuth~).
   - Configuração de pasta designada de pesquisa no Google Drive (~googleDriveFolderId~).
   - Conversão automática de arquivos Word (~.docx~) em Google Docs nativo (~googleDriveConvertToDocs: true~).
   - Links e botões diretos **Abrir no Google Docs ↗** e **Abrir no Google Drive ↗** a partir do gerenciador e corpus de pesquisa.

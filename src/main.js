@@ -5,12 +5,8 @@ import '@fzl/design-tokens/tokens.css'
 import { createAppShell, pattern } from 'fzl-fund-appshell--lit'
 import { researchStorage } from './services/storage-service.js'
 
-// Sincroniza Client IDs do Google e Microsoft para autenticação social em todo o appshell
+// Sincroniza Client IDs declarados localmente com a configuração social nativa do AppShell
 const initialCloudCfg = researchStorage.getCloudSyncConfig()
-if (typeof window !== 'undefined') {
-  window.__FZL_GOOGLE_CLIENT_ID__ = initialCloudCfg.googleClientId || import.meta.env?.VITE_GOOGLE_CLIENT_ID || ''
-  window.__FZL_MICROSOFT_CLIENT_ID__ = initialCloudCfg.microsoftClientId || import.meta.env?.VITE_MICROSOFT_CLIENT_ID || ''
-}
 
 // Import Views
 import './views/caqdas-home-view.js'
@@ -25,7 +21,19 @@ import './views/caqdas-app-docs-view.js'
 
 createAppShell({
   mount: '#app',
-  title: 'FZL CAQDAS — Pesquisa Qualitativa',
+  socialAuth: {
+    enabled: true,
+    ...(initialCloudCfg.googleClientId ? { googleClientId: initialCloudCfg.googleClientId } : {}),
+    ...(initialCloudCfg.microsoftClientId ? { microsoftClientId: initialCloudCfg.microsoftClientId } : {}),
+  },
+  on: {
+    'auth:login': ({ user, reason }) => {
+      console.info(`[FZL CAQDAS] Usuário autenticado (${reason || 'sessão'}):`, user?.name, user?.email, user?.provider)
+    },
+    'auth:logout': ({ reason }) => {
+      console.info(`[FZL CAQDAS] Sessão encerrada (${reason || 'manual'})`)
+    },
+  },
   home: () => html`<caqdas-home-view></caqdas-home-view>`,
   routes: [
     {

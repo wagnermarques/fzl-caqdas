@@ -65,12 +65,25 @@ A navegação principal é feita pelo menu lateral (Drawer) do *FZL AppShell*, o
 * 4. Login Social com Google e Microsoft e Sincronização no Google Drive & Docs
 
 ** 4.1 Login Social com Contas Públicas (`<fzl-social-login>` & AppShell)
-O aplicativo integra o componente oficial de autenticação social do ecossistema FZL:
+O aplicativo adota a arquitetura oficial do *FZL AppShell* com autenticação federada declarativa em ~appshell.config.js~:
 - *Google Identity Services (GIS)*: Permite login com qualquer conta Google pública (`@gmail.com`) ou Google Workspace institucional.
-- *Microsoft Account & Entra ID*: Permite login com contas públicas da Microsoft (`@outlook.com`, `@hotmail.com`, `@live.com`) e contas corporativas do Office 365 via OAuth2 PKCE.
-- *Modo Demonstração Instantâneo vs. Login Real*:
-  - Por padrão, se nenhum Client ID estiver configurado, o aplicativo entra em **Modo Demonstração**, simulando uma conta pública para permitir testes imediatos de interface e fluxo.
-  - Para ativar o **Login Real** com sua conta do Google ou da Microsoft, basta colar seu *Google Cloud Client ID* ou *Microsoft Azure Client ID* no formulário da aba **Google Drive & Docs** (ou configurar as variáveis ~VITE_GOOGLE_CLIENT_ID~ e ~VITE_MICROSOFT_CLIENT_ID~ no arquivo ~.env~).
+- *Microsoft Account & Entra ID*: Permite login com contas públicas da Microsoft (`@outlook.com`, `@hotmail.com`, `@live.com`) e contas corporativas do Office 365 via OAuth2.
+- *Configuração Declarativa no AppShell (`appshell.config.js`)*:
+  #+BEGIN_SRC javascript
+  export default defineAppShellConfig({
+    title: 'FZL CAQDAS — Pesquisa Qualitativa',
+    socialAuth: {
+      enabled: true,
+      googleClientId: '',
+      microsoftClientId: '',
+      microsoftTenantId: 'common',
+      requestDriveScope: true,
+    },
+  })
+  #+END_SRC
+- *Ativação por Variáveis de Ambiente ou Interface*:
+  - No build / CI / GitHub Secrets: ~VITE_APPSHELL_SOCIAL_AUTH_GOOGLE_CLIENT_ID~ e ~VITE_APPSHELL_SOCIAL_AUTH_MICROSOFT_CLIENT_ID~ (ou as variáveis legadas ~VITE_GOOGLE_CLIENT_ID~ e ~VITE_MICROSOFT_CLIENT_ID~).
+  - Em tempo de execução no navegador: basta colar seu *Google Cloud Client ID* ou *Microsoft Azure Client ID* na aba **Google Drive & Docs** de Fontes (`#/fontes`); o sistema invoca ~authService.configureSocialAuth()~ atualizando instantaneamente todas as telas do AppShell.
 - *Passo a Passo para Obtenção do Google Client ID*:
   1. Acesse o [[https://console.cloud.google.com/apis/credentials][Google Cloud Console]].
   2. Em *Tela de consentimento OAuth*, configure como *Externo*.
@@ -80,7 +93,7 @@ O aplicativo integra o componente oficial de autenticação social do ecossistem
 - *Passo a Passo para Obtenção do Microsoft Client ID*:
   1. Acesse o [[https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade][Portal do Azure (Registros de Aplicativo)]].
   2. Clique em *Novo registro* com suporte a contas pessoais e corporativas.
-  3. Adicione a URI de redirecionamento do tipo *SPA*: ~https://wagnermarques.github.io/fzl-caqdas/~.
+  3. Adicione a URI de redirecionamento do tipo *SPA*: ~https://wagnermarques.github.io/fzl-caqdas/~ e ~https://wagnermarques.github.io~.
   4. Copie o *ID do aplicativo (cliente)* e cole no aplicativo.
 - O acesso pode ser realizado tanto pelo menu lateral em **Login Social** (`#/conta/entrar`) quanto diretamente no painel **Google Drive & Docs** dentro da tela de Fontes (`#/fontes`).
 
