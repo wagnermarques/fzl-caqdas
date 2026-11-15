@@ -3,6 +3,17 @@ import { BARDIN_OPEN_ACCESS_SOURCES, INITIAL_STUDY_NOTES } from './bardin-theory
 
 const STORAGE_KEY = 'fzl_caqdas_research_data_v1'
 const STORAGE_THEORY_KEY = 'fzl_caqdas_theory_study_v1'
+const STORAGE_CLOUD_KEY = 'fzl_caqdas_cloud_sync_v1'
+
+const DEFAULT_CLOUD_CONFIG = {
+  provider: 'google-drive',
+  googleDriveFolderId: '',
+  googleDriveConvertToDocs: true,
+  googleAuthToken: '',
+  oneDriveFolderId: '',
+  oneDriveAuthToken: '',
+  autoSyncToCloud: true
+}
 
 class ResearchStorageService {
   constructor() {
@@ -48,6 +59,31 @@ class ResearchStorageService {
   _saveData(data) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
     window.dispatchEvent(new CustomEvent('caqdas-data-changed', { detail: data }))
+  }
+
+  getCloudSyncConfig() {
+    try {
+      const raw = localStorage.getItem(STORAGE_CLOUD_KEY)
+      if (raw) return { ...DEFAULT_CLOUD_CONFIG, ...JSON.parse(raw) }
+    } catch (e) {
+      console.warn('Erro ao ler configuração de nuvem:', e)
+    }
+    return { ...DEFAULT_CLOUD_CONFIG }
+  }
+
+  saveCloudSyncConfig(cfg) {
+    const updated = { ...this.getCloudSyncConfig(), ...cfg }
+    localStorage.setItem(STORAGE_CLOUD_KEY, JSON.stringify(updated))
+    window.dispatchEvent(new CustomEvent('caqdas-cloud-sync-changed', { detail: updated }))
+    return updated
+  }
+
+  updateDocument(docId, updates) {
+    const doc = this._data.documents.find(d => d.id === docId)
+    if (!doc) return null
+    Object.assign(doc, updates)
+    this._saveData(this._data)
+    return doc
   }
 
   getProject() {

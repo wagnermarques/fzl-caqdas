@@ -96,6 +96,14 @@ createAppShell({
         ]
       },
       {
+        id: 'account-section',
+        label: 'Acesso & Sincronização',
+        items: [
+          { label: 'Minha Conta / Perfil', href: '#/conta', icon: 'account_circle' },
+          { label: 'Login Social (Google / Microsoft)', href: '#/conta/entrar', icon: 'login' }
+        ]
+      },
+      {
         id: 'help-section',
         label: 'Ajuda & Operação',
         items: [

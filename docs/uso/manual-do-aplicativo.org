@@ -37,10 +37,11 @@ A navegação principal é feita pelo menu lateral (Drawer) do *FZL AppShell*, o
 
 ** 2.1 Corpus & Materiais
 - *Visão Geral (Dashboard)* (`#/`): Exibe contadores de documentos/entrevistas, códigos criados, segmentos codificados e memos registrados, além de atalhos rápidos.
-- *Fontes & Documentos* (`#/fontes`): Ambiente completo de gestão do corpus dividido em três abas:
-  1. *Gerenciador de Arquivos (`<fzl-file-manager>`)*: Navegador estilo filesystem com alternância entre Tabela e Grade, pastas hierárquicas (`/entrevistas`, `/documentos`), status de sincronização, leitor embutido (DOCX, Markdown, PDF, TXT) com busca, zoom e botão para envio direto à Área de Codificação.
-  2. *Upload & Importação (`<fzl-document-picker>`)*: Ingestão de arquivos Word (`.docx` com leitor nativo OOXML), PDFs, Markdown, TXT e planilhas (CSV/JSON), com suporte a drag & drop, seleção no celular e File System Access API no desktop.
-  3. *Digitação Manual de Transcrição*: Formulário para inserção ou colagem direta de atas e entrevistas.
+- *Fontes & Documentos* (`#/fontes`): Ambiente completo de gestão do corpus dividido em quatro abas principais:
+  1. *Gerenciador de Arquivos (`<fzl-file-manager>`)*: Navegador estilo filesystem com alternância entre Tabela e Grade, pastas hierárquicas (`/entrevistas`, `/documentos`), status de sincronização com a nuvem, leitor embutido (DOCX, Markdown, PDF, TXT) com busca, zoom e botão para envio direto à Área de Codificação. Documentos sincronizados no Google Drive exibem o botão direto **Abrir no Google Docs ↗**.
+  2. *Upload & Importação (`<fzl-document-picker>`)*: Ingestão de arquivos Word (`.docx` com leitor nativo OOXML), PDFs, Markdown, TXT e planilhas (CSV/JSON), com suporte a drag & drop, seleção no celular e integração direta com o upload na nuvem.
+  3. *Google Drive & Docs*: Painel dedicado de configuração de nuvem onde o pesquisador conecta sua conta pública Google/Microsoft, define a pasta de destino no Google Drive, ativa a conversão automática de DOCX para Google Docs e consulta a lista de links diretos na nuvem.
+  4. *Digitação Manual de Transcrição*: Formulário para inserção ou colagem direta de atas e entrevistas.
 
 ** 2.2 Análise Qualitativa
 - *Área de Codificação* (`#/codificacao`): Selecione um documento, destaque trechos do texto com o cursor do mouse, escolha um código no seletor e clique em **Codificar Trecho** para criar o excerto vinculado.
@@ -60,3 +61,20 @@ A navegação principal é feita pelo menu lateral (Drawer) do *FZL AppShell*, o
 * 3. Armazenamento e Privacidade Local
 - Os dados de pesquisa (~fzl_caqdas_research_data_v1~) e as anotações teóricas de estudo (~fzl_caqdas_theory_study_v1~) são persistidos localmente no navegador (~localStorage~), mantendo os dois acervos isolados.
 - Recomenda-se utilizar periodicamente a função **Baixar Projeto Completo (JSON)** na tela de Relatórios para backup externo dos seus dados empíricos.
+
+* 4. Login Social com Google e Microsoft e Sincronização no Google Drive & Docs
+
+** 4.1 Login Social com Contas Públicas (`<fzl-social-login>` & AppShell)
+O aplicativo integra o componente oficial de autenticação social do ecossistema FZL:
+- *Google Identity Services (GIS)*: Permite login com qualquer conta Google pública (`@gmail.com`) ou Google Workspace institucional.
+- *Microsoft Account & Entra ID*: Permite login com contas públicas da Microsoft (`@outlook.com`, `@hotmail.com`, `@live.com`) e contas corporativas do Office 365 via OAuth2 PKCE.
+- *Modo Demonstração Instantâneo*: Se os Client IDs não estiverem configurados ou o pesquisador estiver offline, o sistema simula uma sessão social instantânea para testes de fluxo e interface.
+- O acesso pode ser realizado tanto pelo menu lateral em **Login Social** (`#/conta/entrar`) quanto diretamente no painel **Google Drive & Docs** dentro da tela de Fontes (`#/fontes`).
+
+** 4.2 Sincronização em Nuvem e Pasta Designada no Google Drive
+Pesquisadores podem configurar onde seus arquivos de campo e entrevistas são armazenados:
+1. Acesse a aba **Google Drive & Docs** em *Fontes & Documentos*.
+2. Informe o **ID da Pasta no Google Drive** (código alfanumérico que consta na URL da pasta do Google Drive após `/folders/...`). Se deixado em branco, os arquivos são salvos na raiz do *Meu Drive*.
+3. Mantenha ativada a opção **Converter .docx em Google Docs nativo**.
+4. Ao realizar o upload no *Document Picker* ou *File Manager*, o arquivo é salvo no Google Drive e a API v3 converte automaticamente o formato DOCX em documento Google Docs.
+5. O sistema registra o link direto de visualização e edição, permitindo clicar em **Abrir no Google Docs ↗** para editar colaborativamente em tempo real no navegador.

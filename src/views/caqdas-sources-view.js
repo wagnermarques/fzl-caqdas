@@ -1,11 +1,14 @@
 import { LitElement, html, css } from 'lit'
 import { researchStorage } from '../services/storage-service.js'
+import { authService } from 'fzl-fund-appshell--lit'
 import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
 import '@material/web/icon/icon.js'
 import '@material/web/textfield/outlined-text-field.js'
+import '@material/web/checkbox/checkbox.js'
 import '@fzl/webcomponents-lit/file-manager'
 import '@fzl/webcomponents-lit/document-picker'
+import '@fzl/webcomponents-lit/social-login'
 
 export class CaqdasSourcesView extends LitElement {
   static styles = css`
@@ -49,6 +52,46 @@ export class CaqdasSourcesView extends LitElement {
       border-radius: 8px;
       font-size: 0.85rem;
       font-weight: 500;
+    }
+
+    .cloud-status-banner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+      background: #eef7f6;
+      border: 1px solid #c2e2e0;
+      border-radius: 12px;
+      padding: 12px 18px;
+      margin-bottom: 20px;
+      font-size: 0.9rem;
+    }
+
+    .cloud-status-left {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .user-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #ffffff;
+      padding: 4px 10px;
+      border-radius: 20px;
+      border: 1px solid #b2dfdb;
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    .user-avatar-tiny {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      object-fit: cover;
     }
 
     .tabs-bar {
@@ -126,11 +169,83 @@ export class CaqdasSourcesView extends LitElement {
       padding-top: 14px;
       border-top: 1px solid #e0e0e0;
     }
+
+    .cloud-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 20px;
+      margin-top: 16px;
+    }
+
+    .cloud-card {
+      background: #ffffff;
+      border: 1px solid #d0e0df;
+      border-radius: 12px;
+      padding: 18px;
+    }
+
+    .cloud-card h3 {
+      margin: 0 0 10px 0;
+      color: #006a6a;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 1.1rem;
+    }
+
+    .switch-label {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 12px 0;
+      cursor: pointer;
+      font-size: 0.92rem;
+      user-select: none;
+    }
+
+    .doc-link-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 12px;
+      font-size: 0.88rem;
+    }
+
+    .doc-link-table th,
+    .doc-link-table td {
+      border: 1px solid #e2e8f0;
+      padding: 8px 12px;
+      text-align: left;
+    }
+
+    .doc-link-table th {
+      background: #f1f5f9;
+      font-weight: 600;
+    }
+
+    .btn-external-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #e0f2fe;
+      color: #0284c7;
+      padding: 4px 10px;
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.8rem;
+      border: 1px solid #bae6fd;
+    }
+
+    .btn-external-link:hover {
+      background: #bae6fd;
+    }
   `
 
   static properties = {
     activeTab: { state: true },
     documents: { state: true },
+    currentUser: { state: true },
+    cloudConfig: { state: true },
     newTitle: { state: true },
     newParticipant: { state: true },
     newGroup: { state: true },
@@ -143,6 +258,8 @@ export class CaqdasSourcesView extends LitElement {
     super()
     this.activeTab = 'manager'
     this.documents = []
+    this.currentUser = null
+    this.cloudConfig = researchStorage.getCloudSyncConfig()
     this.newTitle = ''
     this.newParticipant = ''
     this.newGroup = 'Geral'
@@ -154,13 +271,28 @@ export class CaqdasSourcesView extends LitElement {
   connectedCallback() {
     super.connectedCallback()
     this._loadDocs()
+    this.cloudConfig = researchStorage.getCloudSyncConfig()
+
+    this._unsubAuth = authService.subscribe((user) => {
+      this.currentUser = user
+      this.requestUpdate()
+    })
+
     this._onDataChanged = () => this._loadDocs()
+    this._onCloudChanged = (e) => {
+      this.cloudConfig = e.detail || researchStorage.getCloudSyncConfig()
+      this.requestUpdate()
+    }
+
     window.addEventListener('caqdas-data-changed', this._onDataChanged)
+    window.addEventListener('caqdas-cloud-sync-changed', this._onCloudChanged)
   }
 
   disconnectedCallback() {
     super.disconnectedCallback()
+    if (this._unsubAuth) this._unsubAuth()
     window.removeEventListener('caqdas-data-changed', this._onDataChanged)
+    window.removeEventListener('caqdas-cloud-sync-changed', this._onCloudChanged)
   }
 
   _loadDocs() {
@@ -168,14 +300,11 @@ export class CaqdasSourcesView extends LitElement {
     this.requestUpdate()
   }
 
-  /**
-   * Converte os documentos de pesquisa para o formato FzlManagedFile
-   * consumido pelo componente <fzl-file-manager>.
-   */
   _getManagedFiles() {
-    return this.documents.map(doc => {
+    return this.documents.map((doc) => {
       const ext = doc.extension || (doc.type === 'docx' ? '.docx' : doc.type === 'pdf' ? '.pdf' : '.txt')
-      const cat = doc.type === 'pdf' ? 'pdf' : (doc.type === 'csv' || doc.type === 'json' ? 'data' : 'text')
+      const cat = doc.type === 'pdf' ? 'pdf' : doc.type === 'csv' || doc.type === 'json' ? 'data' : 'text'
+      const hasDocs = Boolean(doc.externalViewerUrl)
       return {
         id: doc.id,
         name: doc.title || 'Documento sem título',
@@ -190,22 +319,22 @@ export class CaqdasSourcesView extends LitElement {
         tags: doc.tags || [doc.participant || 'participante', doc.group || 'geral'],
         notes: `Participante: ${doc.participant || 'N/A'} | Excertos codificados: ${doc.quotations?.length || 0}`,
         textContent: doc.content || '',
-        docxBlocks: doc.docxBlocks || undefined
+        docxBlocks: doc.docxBlocks || undefined,
+        externalViewerUrl: doc.externalViewerUrl || undefined,
+        externalViewerLabel:
+          doc.externalViewerLabel ||
+          (hasDocs ? (doc.storageProvider === 'google-drive' ? 'Abrir no Google Docs ↗' : 'Abrir na Nuvem ↗') : undefined)
       }
     })
   }
 
-  /**
-   * Captura documentos selecionados/lidos no <fzl-document-picker>
-   * e adiciona automaticamente ao Corpus da pesquisa.
-   */
   _handleDocumentSelect(e) {
     const docs = e.detail?.documents || []
     if (docs.length === 0) return
 
     let addedCount = 0
     for (const d of docs) {
-      const existing = this.documents.find(existingDoc => existingDoc.title === d.name)
+      const existing = this.documents.find((existingDoc) => existingDoc.title === d.name)
       if (existing) continue
 
       const participantName = d.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ')
@@ -220,9 +349,12 @@ export class CaqdasSourcesView extends LitElement {
         type: docType,
         extension: ext,
         size: d.size || (d.textContent ? d.textContent.length : 2048),
-        status: 'synced',
+        status: d.uploadStatus === 'uploaded' ? 'synced' : 'synced',
+        storageProvider: d.storageProvider || this.cloudConfig.provider,
+        externalViewerUrl: d.externalViewerUrl || d.googleDocsUrl || undefined,
+        externalViewerLabel: d.externalViewerLabel || (ext === '.docx' ? 'Abrir no Google Docs ↗' : 'Abrir no Google Drive ↗'),
         tags: d.tags && d.tags.length > 0 ? d.tags : ['importado', docType],
-        content: d.textContent || (d.docxBlocks ? d.docxBlocks.map(b => b.text).join('\n\n') : ''),
+        content: d.textContent || (d.docxBlocks ? d.docxBlocks.map((b) => b.text).join('\n\n') : ''),
         docxBlocks: d.docxBlocks || undefined,
         quotations: []
       })
@@ -235,10 +367,43 @@ export class CaqdasSourcesView extends LitElement {
     }
   }
 
+  _handleUploadSuccess(e) {
+    const detail = e.detail || {}
+    const doc = detail.document
+    const uploadResult = detail.uploadResult || {}
+
+    if (doc) {
+      const externalViewerUrl = uploadResult.externalViewerUrl || doc.externalViewerUrl || doc.googleDocsUrl
+      const externalViewerLabel = uploadResult.externalViewerLabel || doc.externalViewerLabel || 'Abrir no Google Docs ↗'
+
+      researchStorage.updateDocument(doc.id, {
+        status: 'synced',
+        storageProvider: uploadResult.provider || this.cloudConfig.provider,
+        externalViewerUrl,
+        externalViewerLabel,
+        googleDriveFileId: uploadResult.fileId || doc.googleDriveFileId
+      })
+      this._loadDocs()
+    }
+  }
+
+  _handleFileUploaded(e) {
+    const detail = e.detail || {}
+    const file = detail.file
+    if (file && detail.externalViewerUrl) {
+      researchStorage.updateDocument(file.id, {
+        externalViewerUrl: detail.externalViewerUrl,
+        externalViewerLabel: detail.externalViewerLabel || 'Abrir no Google Docs ↗',
+        status: 'synced'
+      })
+      this._loadDocs()
+    }
+  }
+
   _handleFileRead(e) {
     const file = e.detail?.file
     if (!file) return
-    const doc = this.documents.find(d => d.id === file.id)
+    const doc = this.documents.find((d) => d.id === file.id)
     if (doc) {
       this.selectedDocForReading = doc
     }
@@ -249,7 +414,7 @@ export class CaqdasSourcesView extends LitElement {
     if (!file) return
     const confirmDel = confirm(`Deseja remover "${file.name}" do corpus da pesquisa?`)
     if (confirmDel) {
-      this.documents = this.documents.filter(d => d.id !== file.id)
+      this.documents = this.documents.filter((d) => d.id !== file.id)
       const data = researchStorage._data
       data.documents = this.documents
       researchStorage._saveData(data)
@@ -283,8 +448,50 @@ export class CaqdasSourcesView extends LitElement {
     alert('Documento cadastrado com sucesso!')
   }
 
+  _handleSocialLoginSuccess(e) {
+    const { provider, user, credential } = e.detail
+    authService.signInWithSocial({ provider, user, credential })
+    alert(`✔ Autenticado com sucesso via ${provider.toUpperCase()}: ${user.name} (${user.email})`)
+  }
+
+  _handleSocialLoginError(e) {
+    alert(`Erro na autenticação social: ${e.detail?.error || 'Tente novamente.'}`)
+  }
+
+  _handleSignOut() {
+    authService.signOut()
+    alert('Sessão encerrada.')
+  }
+
+  _updateCloudConfig(patch) {
+    this.cloudConfig = researchStorage.saveCloudSyncConfig(patch)
+  }
+
+  _simulateDocsSyncForSample() {
+    const docxDocs = this.documents.filter((d) => d.extension === '.docx' || d.type === 'docx')
+    if (docxDocs.length === 0) {
+      alert('Nenhum documento .docx encontrado no corpus para sincronizar.')
+      return
+    }
+
+    for (const d of docxDocs) {
+      const mockId = `1docs_${d.id}_${Date.now()}`
+      researchStorage.updateDocument(d.id, {
+        status: 'synced',
+        storageProvider: 'google-drive',
+        externalViewerUrl: `https://docs.google.com/document/d/${mockId}/edit`,
+        externalViewerLabel: 'Abrir no Google Docs ↗',
+        googleDriveFileId: mockId
+      })
+    }
+    this._loadDocs()
+    alert(`✔ ${docxDocs.length} documento(s) Word sincronizado(s) com links de edição no Google Docs!`)
+  }
+
   render() {
     const managedFiles = this._getManagedFiles()
+    const isGoogle = this.currentUser?.email?.includes('gmail') || this.currentUser?.avatarUrl?.includes('google')
+    const isMs = this.currentUser?.email?.includes('outlook') || this.currentUser?.email?.includes('hotmail')
 
     return html`
       <div class="header-box">
@@ -292,7 +499,7 @@ export class CaqdasSourcesView extends LitElement {
           <div>
             <h1>Corpus de Pesquisa &amp; Gerenciador de Documentos</h1>
             <p style="margin: 6px 0 0 0; color: var(--md-sys-color-on-surface-variant, #49454f);">
-              Faça upload de transcrições, arquivos Word (.docx), PDFs e notas de campo, gerencie o corpus e realize a leitura analítica prévia.
+              Colete entrevistas, documentos Word (.docx), PDFs e notas de campo, organize o corpus e sincronize na nuvem com o Google Docs &amp; Google Drive.
             </p>
           </div>
 
@@ -303,15 +510,60 @@ export class CaqdasSourcesView extends LitElement {
         </div>
 
         <div style="font-size: 0.9rem; color: #555;">
-          Total no Corpus: <strong>${this.documents.length}</strong> documentos cadastrados | 
-          Pastas ativas: <code>/entrevistas</code>, <code>/documentos</code>
+          Total no Corpus: <strong>${this.documents.length}</strong> documentos cadastrados | Pastas ativas:
+          <code>/entrevistas</code>, <code>/documentos</code>
+        </div>
+      </div>
+
+      <!-- Cloud & Auth Status Banner -->
+      <div class="cloud-status-banner">
+        <div class="cloud-status-left">
+          ${this.currentUser
+            ? html`
+                <span class="user-pill">
+                  ${this.currentUser.avatarUrl
+                    ? html`<img class="user-avatar-tiny" src=${this.currentUser.avatarUrl} alt="" />`
+                    : html`<md-icon style="font-size: 18px;">account_circle</md-icon>`}
+                  <strong>${this.currentUser.name}</strong> (${this.currentUser.email})
+                  <span style="font-size: 0.72rem; background: #e0f2f1; color: #004d40; padding: 2px 6px; border-radius: 4px;">
+                    ${isGoogle ? 'Google' : isMs ? 'Microsoft' : 'Logado'}
+                  </span>
+                </span>
+              `
+            : html`
+                <span class="user-pill" style="border-color: #fcd34d; background: #fffbeb; color: #92400e;">
+                  <md-icon style="font-size: 18px; color: #d97706;">info</md-icon>
+                  Modo Local / Demonstração (Sem Login Social ativo)
+                </span>
+              `}
+
+          <span>
+            ☁️ Provedor de Nuvem: <strong>${this.cloudConfig.provider === 'google-drive' ? 'Google Drive & Docs' : this.cloudConfig.provider}</strong>
+            ${this.cloudConfig.googleDriveFolderId ? html`| Pasta: <code>${this.cloudConfig.googleDriveFolderId}</code>` : html`| Pasta: <code>Meu Drive (Raiz)</code>`}
+            ${this.cloudConfig.googleDriveConvertToDocs ? html`| <span style="color: #006a6a; font-weight: 500;">✓ Conversão DOCX → Google Docs Ativa</span>` : ''}
+          </span>
+        </div>
+
+        <div style="display: flex; gap: 8px;">
+          <button
+            class="tab-btn"
+            style="padding: 6px 12px; font-size: 0.85rem;"
+            @click=${() => {
+              this.activeTab = 'cloud'
+            }}
+          >
+            <md-icon style="font-size: 18px;">settings</md-icon>
+            Configurar Nuvem &amp; Login
+          </button>
         </div>
       </div>
 
       <div class="tabs-bar">
         <button
           class="tab-btn ${this.activeTab === 'manager' ? 'active' : ''}"
-          @click=${() => { this.activeTab = 'manager' }}
+          @click=${() => {
+            this.activeTab = 'manager'
+          }}
         >
           <md-icon>folder</md-icon>
           Gerenciador de Arquivos (fzl-file-manager)
@@ -319,119 +571,330 @@ export class CaqdasSourcesView extends LitElement {
 
         <button
           class="tab-btn ${this.activeTab === 'upload' ? 'active' : ''}"
-          @click=${() => { this.activeTab = 'upload' }}
+          @click=${() => {
+            this.activeTab = 'upload'
+          }}
         >
           <md-icon>upload_file</md-icon>
           Upload &amp; Importação (fzl-document-picker)
         </button>
 
         <button
+          class="tab-btn ${this.activeTab === 'cloud' ? 'active' : ''}"
+          @click=${() => {
+            this.activeTab = 'cloud'
+          }}
+        >
+          <md-icon>cloud_sync</md-icon>
+          Google Drive &amp; Docs
+        </button>
+
+        <button
           class="tab-btn ${this.activeTab === 'manual' ? 'active' : ''}"
-          @click=${() => { this.activeTab = 'manual' }}
+          @click=${() => {
+            this.activeTab = 'manual'
+          }}
         >
           <md-icon>edit_note</md-icon>
           Digitação Manual de Transcrição
         </button>
       </div>
 
-      ${this.activeTab === 'manager' ? html`
-        <div class="card">
-          <div class="info-alert">
-            📂 <strong>Explorador de Arquivos &amp; Leitor Integrado:</strong>
-            Alterne entre visualização em <strong>Tabela</strong> e <strong>Grade</strong>, navegue pelas pastas do corpus,
-            consulte badges de status e clique em <strong>Continuar Leitura</strong> para abrir o leitor embutido com suporte nativo a DOCX, texto, busca e escala de fonte.
-          </div>
+      ${this.activeTab === 'manager'
+        ? html`
+            <div class="card">
+              <div class="info-alert">
+                📂 <strong>Explorador de Arquivos &amp; Leitor Integrado:</strong>
+                Alterne entre visualização em <strong>Tabela</strong> e <strong>Grade</strong>, navegue pelas pastas do corpus,
+                consulte status de sincronização e clique em <strong>Continuar Leitura</strong> para abrir o leitor embutido com suporte nativo a DOCX, texto, busca e escala de fonte.
+                Documentos enviados ao Google Drive exibem o botão direto <strong>Abrir no Google Docs ↗</strong>.
+              </div>
 
-          <fzl-file-manager
-            view-mode="table"
-            current-folder="/"
-            .files=${managedFiles}
-            @fzl-file-read=${this._handleFileRead}
-            @fzl-file-delete=${this._handleFileDelete}
-            @fzl-file-open-study=${() => {
-              window.location.hash = '#/codificacao'
-            }}
-          ></fzl-file-manager>
+              <fzl-file-manager
+                view-mode="table"
+                current-folder="/"
+                storage-provider=${this.cloudConfig.provider}
+                google-drive-folder-id=${this.cloudConfig.googleDriveFolderId}
+                ?google-drive-convert-to-docs=${this.cloudConfig.googleDriveConvertToDocs}
+                google-auth-token=${this.cloudConfig.googleAuthToken}
+                .files=${managedFiles}
+                @fzl-file-read=${this._handleFileRead}
+                @fzl-file-delete=${this._handleFileDelete}
+                @fzl-file-uploaded=${this._handleFileUploaded}
+                @fzl-file-open-study=${() => {
+                  window.location.hash = '#/codificacao'
+                }}
+              ></fzl-file-manager>
 
-          <div class="action-panel">
-            <span style="font-size: 0.9rem; color: #555;">
-              Pronto para selecionar evidências e codificar os trechos dos documentos?
-            </span>
-            <md-filled-button href="#/codificacao">
-              <md-icon slot="icon">edit_note</md-icon>
-              Ir para Área de Codificação (Bardin)
-            </md-filled-button>
-          </div>
-        </div>
-      ` : ''}
+              <div class="action-panel">
+                <span style="font-size: 0.9rem; color: #555;">
+                  Pronto para selecionar evidências e codificar os trechos dos documentos?
+                </span>
+                <md-filled-button href="#/codificacao">
+                  <md-icon slot="icon">edit_note</md-icon>
+                  Ir para Área de Codificação (Bardin)
+                </md-filled-button>
+              </div>
+            </div>
+          `
+        : ''}
 
-      ${this.activeTab === 'upload' ? html`
-        <div class="card">
-          <div class="info-alert">
-            📥 <strong>Upload Multiplataforma (Desktop &amp; Mobile):</strong>
-            Arraste e solte arquivos ou use os seletores abaixo para carregar entrevistas e relatórios em
-            <strong>Word (.docx com leitor nativo OOXML)</strong>, <strong>PDF</strong>, <strong>Markdown (.md)</strong>,
-            <strong>TXT</strong> ou planilhas <strong>CSV/JSON</strong>. Os arquivos aceitos são adicionados automaticamente ao Corpus!
-          </div>
+      ${this.activeTab === 'upload'
+        ? html`
+            <div class="card">
+              <div class="info-alert">
+                📥 <strong>Upload Multiplataforma com Integração em Nuvem:</strong>
+                Arraste e solte arquivos ou use os seletores abaixo para carregar entrevistas e relatórios em
+                <strong>Word (.docx com leitor nativo OOXML)</strong>, <strong>PDF</strong>, <strong>Markdown (.md)</strong>,
+                <strong>TXT</strong> ou planilhas <strong>CSV/JSON</strong>. Os arquivos são adicionados ao Corpus e enviados diretamente à sua pasta designada no <strong>Google Drive</strong>, com conversão automática para o <strong>Google Docs</strong>!
+              </div>
 
-          <fzl-document-picker
-            mode="all"
-            accept=".docx,.txt,.md,.pdf,.csv,.json"
-            allow-folder-scan
-            start-in="documents"
-            @fzl-document-select=${this._handleDocumentSelect}
-            @fzl-document-open-study=${(e) => {
-              this._handleDocumentSelect(e)
-              window.location.hash = '#/codificacao'
-            }}
-          ></fzl-document-picker>
-        </div>
-      ` : ''}
+              <fzl-document-picker
+                mode="all"
+                accept=".docx,.txt,.md,.pdf,.csv,.json"
+                allow-folder-scan
+                start-in="documents"
+                storage-provider=${this.cloudConfig.provider}
+                google-drive-folder-id=${this.cloudConfig.googleDriveFolderId}
+                ?google-drive-convert-to-docs=${this.cloudConfig.googleDriveConvertToDocs}
+                google-auth-token=${this.cloudConfig.googleAuthToken}
+                @fzl-document-select=${this._handleDocumentSelect}
+                @fzl-document-upload-success=${this._handleUploadSuccess}
+                @fzl-document-open-study=${(e) => {
+                  this._handleDocumentSelect(e)
+                  window.location.hash = '#/codificacao'
+                }}
+              ></fzl-document-picker>
+            </div>
+          `
+        : ''}
 
-      ${this.activeTab === 'manual' ? html`
-        <div class="form-box">
-          <h3 style="margin-top: 0; color: var(--md-sys-color-primary, #006a6a);">
-            Digitar ou Colar Nova Transcrição Manualmente
-          </h3>
-          <div class="form-group">
-            <md-outlined-text-field
-              label="Título do Documento / Entrevista"
-              style="width: 100%;"
-              .value=${this.newTitle}
-              @input=${(e) => { this.newTitle = e.target.value }}
-            ></md-outlined-text-field>
-          </div>
-          <div style="display: flex; gap: 12px; flex-wrap: wrap;" class="form-group">
-            <md-outlined-text-field
-              label="Participante / Informante (ex.: Estudante 4, Aluno A)"
-              style="flex: 1; min-width: 240px;"
-              .value=${this.newParticipant}
-              @input=${(e) => { this.newParticipant = e.target.value }}
-            ></md-outlined-text-field>
-            <md-outlined-text-field
-              label="Pasta no Corpus (ex.: /entrevistas, /atas)"
-              style="width: 220px;"
-              .value=${this.newFolder}
-              @input=${(e) => { this.newFolder = e.target.value }}
-            ></md-outlined-text-field>
-          </div>
-          <div class="form-group">
-            <md-outlined-text-field
-              type="textarea"
-              rows="6"
-              label="Texto Transcrito Completo"
-              style="width: 100%;"
-              .value=${this.newContent}
-              @input=${(e) => { this.newContent = e.target.value }}
-            ></md-outlined-text-field>
-          </div>
+      ${this.activeTab === 'cloud'
+        ? html`
+            <div class="card">
+              <h2 style="margin-top: 0; color: #006a6a; display: flex; align-items: center; gap: 8px;">
+                <md-icon>cloud_sync</md-icon>
+                Sincronização em Nuvem (Google Drive &amp; Google Docs)
+              </h2>
+              <p style="color: #4b5563; font-size: 0.95rem; line-height: 1.5;">
+                Conecte sua conta pública do <strong>Google</strong> ou da <strong>Microsoft</strong> para gerenciar seus documentos na nuvem.
+                Ao fazer o upload de arquivos de pesquisa (especialmente arquivos <code>.docx</code>), eles são salvos na sua pasta designada no Google Drive e transformados em documentos nativos do <strong>Google Docs</strong> para colaboração em tempo real.
+              </p>
 
-          <div style="display: flex; gap: 8px; justify-content: flex-end;">
-            <md-outlined-button @click=${() => { this.activeTab = 'manager' }}>Cancelar</md-outlined-button>
-            <md-filled-button @click=${this._handleSaveManualDoc}>Salvar no Corpus</md-filled-button>
-          </div>
-        </div>
-      ` : ''}
+              <div class="cloud-grid">
+                <!-- Card 1: Autenticação Social -->
+                <div class="cloud-card">
+                  <h3>
+                    <md-icon>badge</md-icon>
+                    Autenticação &amp; Identidade
+                  </h3>
+
+                  ${this.currentUser
+                    ? html`
+                        <div style="display: flex; align-items: center; gap: 12px; margin: 16px 0; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+                          ${this.currentUser.avatarUrl
+                            ? html`<img style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover;" src=${this.currentUser.avatarUrl} alt="" />`
+                            : html`<md-icon style="font-size: 40px; color: #006a6a;">account_circle</md-icon>`}
+                          <div>
+                            <div style="font-weight: 600; font-size: 1rem;">${this.currentUser.name}</div>
+                            <div style="font-size: 0.85rem; color: #64748b;">${this.currentUser.email}</div>
+                          </div>
+                        </div>
+
+                        <div style="display: flex; gap: 8px;">
+                          <md-outlined-button @click=${this._handleSignOut}>
+                            <md-icon slot="icon">logout</md-icon>
+                            Desconectar
+                          </md-outlined-button>
+                          <md-text-button href="#/conta">Ver Minha Conta</md-text-button>
+                        </div>
+                      `
+                    : html`
+                        <p style="font-size: 0.88rem; color: #64748b; margin-bottom: 14px;">
+                          Faça login com sua conta Google ou Microsoft para sincronizar com sua pasta do Drive / OneDrive:
+                        </p>
+                        <fzl-social-login
+                          layout="buttons"
+                          show-divider="false"
+                          @fzl-social-login-success=${this._handleSocialLoginSuccess}
+                          @fzl-social-login-error=${this._handleSocialLoginError}
+                        ></fzl-social-login>
+                      `}
+                </div>
+
+                <!-- Card 2: Configuração Google Drive -->
+                <div class="cloud-card">
+                  <h3>
+                    <md-icon>folder_shared</md-icon>
+                    Destino no Google Drive
+                  </h3>
+
+                  <div class="form-group">
+                    <md-outlined-text-field
+                      label="ID da Pasta no Google Drive (Folder ID)"
+                      supporting-text="Ex: 1aB2cD3e... (deixe em branco para a raiz do Meu Drive)"
+                      style="width: 100%;"
+                      .value=${this.cloudConfig.googleDriveFolderId || ''}
+                      @input=${(e) => {
+                        this._updateCloudConfig({ googleDriveFolderId: e.target.value.trim() })
+                      }}
+                    ></md-outlined-text-field>
+                  </div>
+
+                  <label class="switch-label">
+                    <input
+                      type="checkbox"
+                      style="width: 18px; height: 18px; cursor: pointer;"
+                      .checked=${Boolean(this.cloudConfig.googleDriveConvertToDocs)}
+                      @change=${(e) => {
+                        this._updateCloudConfig({ googleDriveConvertToDocs: e.target.checked })
+                      }}
+                    />
+                    <span>
+                      <strong>Converter .docx em Google Docs nativo</strong>
+                      <div style="font-size: 0.78rem; color: #64748b;">
+                        Permite abrir e editar o documento diretamente no navegador via Google Docs.
+                      </div>
+                    </span>
+                  </label>
+
+                  <div class="form-group" style="margin-top: 14px;">
+                    <md-outlined-text-field
+                      label="Token OAuth2 Google Drive (Opcional para API direta)"
+                      supporting-text="Bearer token com escopo drive.file ou gerado via GIS"
+                      style="width: 100%;"
+                      type="password"
+                      .value=${this.cloudConfig.googleAuthToken || ''}
+                      @input=${(e) => {
+                        this._updateCloudConfig({ googleAuthToken: e.target.value.trim() })
+                      }}
+                    ></md-outlined-text-field>
+                  </div>
+
+                  <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px;">
+                    <md-filled-button @click=${() => alert('✔ Configurações de nuvem salvas com sucesso!')}>
+                      Salvar Configurações
+                    </md-filled-button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Card 3: Lista de Documentos Sincronizados e Links Google Docs -->
+              <div style="margin-top: 24px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
+                  <h3 style="margin: 0; color: #006a6a;">Documentos no Corpus com Integração Google Docs</h3>
+                  <md-outlined-button @click=${this._simulateDocsSyncForSample}>
+                    <md-icon slot="icon">sync</md-icon>
+                    Sincronizar Arquivos DOCX no Google Docs (Simulação)
+                  </md-outlined-button>
+                </div>
+
+                <table class="doc-link-table">
+                  <thead>
+                    <tr>
+                      <th>Documento</th>
+                      <th>Tipo</th>
+                      <th>Participante / Pasta</th>
+                      <th>Status de Nuvem</th>
+                      <th>Visualizador / Edição</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${this.documents.map((doc) => {
+                      const hasDocs = Boolean(doc.externalViewerUrl)
+                      return html`
+                        <tr>
+                          <td><strong>${doc.title}</strong></td>
+                          <td><code>${doc.extension || doc.type}</code></td>
+                          <td>${doc.participant || 'N/A'} (<code>${doc.folder || '/entrevistas'}</code>)</td>
+                          <td>
+                            <span style="display: inline-flex; align-items: center; gap: 4px; color: ${hasDocs ? '#0284c7' : '#64748b'};">
+                              <md-icon style="font-size: 16px;">${hasDocs ? 'cloud_done' : 'cloud_queue'}</md-icon>
+                              ${hasDocs ? 'Sincronizado' : 'Local'}
+                            </span>
+                          </td>
+                          <td>
+                            ${hasDocs
+                              ? html`
+                                  <a class="btn-external-link" href=${doc.externalViewerUrl} target="_blank" rel="noopener noreferrer">
+                                    <md-icon style="font-size: 14px;">open_in_new</md-icon>
+                                    ${doc.externalViewerLabel || 'Abrir no Google Docs ↗'}
+                                  </a>
+                                `
+                              : html`
+                                  <span style="color: #94a3b8; font-size: 0.8rem;">Disponível ao fazer upload no Drive</span>
+                                `}
+                          </td>
+                        </tr>
+                      `
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          `
+        : ''}
+
+      ${this.activeTab === 'manual'
+        ? html`
+            <div class="form-box">
+              <h3 style="margin-top: 0; color: var(--md-sys-color-primary, #006a6a);">
+                Digitar ou Colar Nova Transcrição Manualmente
+              </h3>
+              <div class="form-group">
+                <md-outlined-text-field
+                  label="Título do Documento / Entrevista"
+                  style="width: 100%;"
+                  .value=${this.newTitle}
+                  @input=${(e) => {
+                    this.newTitle = e.target.value
+                  }}
+                ></md-outlined-text-field>
+              </div>
+              <div style="display: flex; gap: 12px; flex-wrap: wrap;" class="form-group">
+                <md-outlined-text-field
+                  label="Participante / Informante (ex.: Estudante 4, Aluno A)"
+                  style="flex: 1; min-width: 240px;"
+                  .value=${this.newParticipant}
+                  @input=${(e) => {
+                    this.newParticipant = e.target.value
+                  }}
+                ></md-outlined-text-field>
+                <md-outlined-text-field
+                  label="Pasta no Corpus (ex.: /entrevistas, /atas)"
+                  style="width: 220px;"
+                  .value=${this.newFolder}
+                  @input=${(e) => {
+                    this.newFolder = e.target.value
+                  }}
+                ></md-outlined-text-field>
+              </div>
+              <div class="form-group">
+                <md-outlined-text-field
+                  type="textarea"
+                  rows="6"
+                  label="Texto Transcrito Completo"
+                  style="width: 100%;"
+                  .value=${this.newContent}
+                  @input=${(e) => {
+                    this.newContent = e.target.value
+                  }}
+                ></md-outlined-text-field>
+              </div>
+
+              <div style="display: flex; gap: 8px; justify-content: flex-end;">
+                <md-outlined-button
+                  @click=${() => {
+                    this.activeTab = 'manager'
+                  }}
+                >
+                  Cancelar
+                </md-outlined-button>
+                <md-filled-button @click=${this._handleSaveManualDoc}>Salvar no Corpus</md-filled-button>
+              </div>
+            </div>
+          `
+        : ''}
     `
   }
 }

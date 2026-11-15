@@ -61,7 +61,7 @@ Base teórico-metodológica documentada e isolada da documentação técnica de 
 - [X] Tarefa 1.5.3: Separação estrita entre documentação de uso do aplicativo ([[file:docs/uso/manual-do-aplicativo.org][docs/uso/manual-do-aplicativo.org]] e rota ~#/documentacao-app~) e acervo teórico (rota ~#/teoria-bardin~ e armazenamento isolado ~fzl_caqdas_theory_study_v1~).
 - [X] Tarefa 1.5.4: Implementação do catálogo interativo de seleção de fontes e caderno de anotações teóricas com citação obrigatória em ~<caqdas-theory-view>~.
 
-** FASE 2: Organização de Dados e Importação de Arquivos (Polo 1 de Bardin: Pré-Análise) [2/4]
+** FASE 2: Organização de Dados e Importação de Arquivos (Polo 1 de Bardin: Pré-Análise) [3/5]
 :PROPERTIES:
 :CATEGORY: data-management
 :END:
@@ -78,6 +78,11 @@ Permitir que o pesquisador crie projetos, defina participantes/casos, execute a 
   - Inclusão automática dos documentos selecionados no Corpus da pesquisa.
 - [X] Tarefa 2.4: Navegador e Gerenciador de Fontes & Documentos (~<fzl-file-manager>~)
   - Visualização em tabela e grade com badges de status (~synced~, ~bookmarked-only~, ~uploaded-only~), navegação em pastas hierárquicas (~/entrevistas~, ~/documentos~), busca textual e leitor embutido com busca, zoom e botão para envio à área de codificação.
+- [X] Tarefa 2.5: Autenticação Social (Google & Microsoft) e Sincronização em Nuvem (Google Drive & Google Docs)
+  - Login social client-side com contas públicas do Google (GIS) e Microsoft (MSAL / PKCE) via ~<fzl-social-login>~ e AppShell ~auth-view~.
+  - Configuração de pasta designada de pesquisa no Google Drive (~googleDriveFolderId~).
+  - Conversão automática de arquivos Word (~.docx~) em Google Docs nativo (~googleDriveConvertToDocs: true~).
+  - Links e botões diretos **Abrir no Google Docs ↗** e **Abrir no Google Drive ↗** a partir do gerenciador e corpus de pesquisa.
 
 ** FASE 3: Transcrição Sincronizada de Áudio e Vídeo [0/3]
 :PROPERTIES:
