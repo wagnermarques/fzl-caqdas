@@ -596,9 +596,9 @@ export class CaqdasSourcesView extends LitElement {
                 </span>
               `
             : html`
-                <span class="user-pill" style="border-color: #fcd34d; background: #fffbeb; color: #92400e;">
-                  <md-icon style="font-size: 18px; color: #d97706;">info</md-icon>
-                  Modo Local / Demonstração (Sem Login Social ativo)
+                <span class="user-pill" style="border-color: #cbd5e1; background: #f8fafc; color: #475569;">
+                  <md-icon style="font-size: 18px; color: #0284c7;">account_circle</md-icon>
+                  Não autenticado (Login Social com Google / Microsoft disponível)
                 </span>
               `}
 
@@ -778,14 +778,14 @@ export class CaqdasSourcesView extends LitElement {
                         <div style="margin-bottom: 12px; font-size: 0.84rem;">
                           ${this.cloudConfig.googleClientId
                             ? html`<span style="color: #166534; background: #dcfce7; padding: 2px 8px; border-radius: 4px; font-weight: 500;">
-                                🟢 Login Real Google Ativo
+                                🟢 Google OAuth Ativo (Login Real)
                               </span>`
                             : html`<span style="color: #92400e; background: #fef3c7; padding: 2px 8px; border-radius: 4px; font-weight: 500;">
-                                🟡 Modo Demonstração (Client ID não configurado)
+                                ⚠️ Google Client ID não informado (insira abaixo para autenticar)
                               </span>`}
                         </div>
                         <p style="font-size: 0.88rem; color: #64748b; margin-bottom: 14px;">
-                          Faça login com sua conta Google ou Microsoft para sincronizar com sua pasta do Drive / OneDrive:
+                          Faça login com sua conta real do Google ou Microsoft para sincronizar com seu Google Drive / OneDrive:
                         </p>
                         <fzl-social-login
                           layout="buttons"
@@ -793,7 +793,6 @@ export class CaqdasSourcesView extends LitElement {
                           google-client-id=${this.cloudConfig.googleClientId || ''}
                           microsoft-client-id=${this.cloudConfig.microsoftClientId || ''}
                           microsoft-tenant-id=${this.cloudConfig.microsoftTenantId || 'common'}
-                          ?allow-demo-fallback=${Boolean(this.cloudConfig.allowDemoFallback)}
                           @fzl-social-login-success=${this._handleSocialLoginSuccess}
                           @fzl-social-login-error=${this._handleSocialLoginError}
                         ></fzl-social-login>
@@ -835,22 +834,9 @@ export class CaqdasSourcesView extends LitElement {
                     ></md-outlined-text-field>
                   </div>
 
-                  <label class="switch-label">
-                    <input
-                      type="checkbox"
-                      style="width: 18px; height: 18px; cursor: pointer;"
-                      .checked=${Boolean(this.cloudConfig.allowDemoFallback)}
-                      @change=${(e) => {
-                        this._updateCloudConfig({ allowDemoFallback: e.target.checked })
-                      }}
-                    />
-                    <span>
-                      <strong>Permitir fallback de demonstração</strong>
-                      <div style="font-size: 0.78rem; color: #64748b;">
-                        Simula login quando o Client ID não estiver preenchido.
-                      </div>
-                    </span>
-                  </label>
+                  <div style="font-size: 0.8rem; color: #64748b; background: #f1f5f9; padding: 8px 12px; border-radius: 6px;">
+                    🔒 <strong>Segurança:</strong> O aplicativo agora opera exclusivamente com autenticação real via provedores federados (Google GIS / Microsoft Entra). Nenhuma senha ou credencial privada é armazenada.
+                  </div>
                 </div>
 
                 <!-- Card 3: Configuração Google Drive -->

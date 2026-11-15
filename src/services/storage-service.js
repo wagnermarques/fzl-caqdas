@@ -10,7 +10,6 @@ const DEFAULT_CLOUD_CONFIG = {
   googleClientId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GOOGLE_CLIENT_ID) || '',
   microsoftClientId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MICROSOFT_CLIENT_ID) || '',
   microsoftTenantId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MICROSOFT_TENANT_ID) || 'common',
-  allowDemoFallback: true,
   googleDriveFolderId: '',
   googleDriveConvertToDocs: true,
   googleAuthToken: '',

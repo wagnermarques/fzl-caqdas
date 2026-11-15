@@ -30,8 +30,7 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
       authConfig: {
         googleClientId: cloudCfg.googleClientId || undefined,
         microsoftClientId: cloudCfg.microsoftClientId || undefined,
-        microsoftTenantId: cloudCfg.microsoftTenantId || 'common',
-        allowDemoFallback: cloudCfg.allowDemoFallback ?? true
+        microsoftTenantId: cloudCfg.microsoftTenantId || 'common'
       },
       ...options
     })
