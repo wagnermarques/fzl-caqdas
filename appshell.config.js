@@ -6,6 +6,7 @@ export default defineAppShellConfig({
   // Configuração declarativa nativa de autenticação social do AppShell (Google e Microsoft)
   socialAuth: {
     enabled: true,
+    providers: 'all',
     googleClientId: '',
     microsoftClientId: '',
     microsoftTenantId: 'common',
