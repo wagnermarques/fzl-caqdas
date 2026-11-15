@@ -1,6 +1,7 @@
 import { LitElement, html, css } from 'lit'
 import { researchStorage } from '../services/storage-service.js'
 import { authService } from 'fzl-fund-appshell--lit'
+import { CaqdasPersonalCloudDocsController } from '../controllers/caqdas-controllers.js'
 import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
 import '@material/web/icon/icon.js'
@@ -251,7 +252,8 @@ export class CaqdasSourcesView extends LitElement {
     newGroup: { state: true },
     newFolder: { state: true },
     newContent: { state: true },
-    selectedDocForReading: { state: true }
+    selectedDocForReading: { state: true },
+    _syncingDocId: { state: true }
   }
 
   constructor() {
@@ -260,12 +262,69 @@ export class CaqdasSourcesView extends LitElement {
     this.documents = []
     this.currentUser = null
     this.cloudConfig = researchStorage.getCloudSyncConfig()
+    this.cloudController = new CaqdasPersonalCloudDocsController(this)
+    this._syncingDocId = null
     this.newTitle = ''
     this.newParticipant = ''
     this.newGroup = 'Geral'
     this.newFolder = '/entrevistas'
     this.newContent = ''
     this.selectedDocForReading = null
+  }
+
+  firstUpdated() {
+    this._bindControllers()
+  }
+
+  updated() {
+    this._bindControllers()
+  }
+
+  _bindControllers() {
+    const socialEl = this.shadowRoot?.querySelector('fzl-social-login')
+    const pickerEl = this.shadowRoot?.querySelector('fzl-document-picker')
+    const managerEl = this.shadowRoot?.querySelector('fzl-file-manager')
+    const authCtrl = socialEl?.authController || this.cloudController.authController
+
+    if (authCtrl) {
+      if (pickerEl && typeof pickerEl.bindSocialAuth === 'function') {
+        pickerEl.bindSocialAuth(authCtrl, {
+          convertToGoogleDocs: this.cloudConfig.googleDriveConvertToDocs,
+          googleDriveFolderId: this.cloudConfig.googleDriveFolderId
+        })
+      }
+      if (managerEl && typeof managerEl.bindSocialAuth === 'function') {
+        managerEl.bindSocialAuth(authCtrl, {
+          convertToGoogleDocs: this.cloudConfig.googleDriveConvertToDocs,
+          googleDriveFolderId: this.cloudConfig.googleDriveFolderId
+        })
+      }
+    }
+  }
+
+  async _syncDocViaController(doc) {
+    if (this._syncingDocId) return
+    this._syncingDocId = doc.id
+    this.requestUpdate()
+
+    try {
+      const result = await this.cloudController.syncCorpusDocument(doc, {
+        convertToGoogleDocs: this.cloudConfig.googleDriveConvertToDocs,
+        folderId: this.cloudConfig.googleDriveFolderId
+      })
+
+      if (result.success) {
+        this._loadDocs()
+        alert(`✔ Documento "${doc.title}" sincronizado com sucesso no Google Docs!`)
+      } else {
+        alert(`Não foi possível sincronizar no Google Docs: ${result.error || 'Erro desconhecido'}`)
+      }
+    } catch (err) {
+      alert(`Erro ao sincronizar: ${err.message}`)
+    } finally {
+      this._syncingDocId = null
+      this.requestUpdate()
+    }
   }
 
   connectedCallback() {
@@ -814,16 +873,24 @@ export class CaqdasSourcesView extends LitElement {
                             </span>
                           </td>
                           <td>
-                            ${hasDocs
-                              ? html`
-                                  <a class="btn-external-link" href=${doc.externalViewerUrl} target="_blank" rel="noopener noreferrer">
-                                    <md-icon style="font-size: 14px;">open_in_new</md-icon>
-                                    ${doc.externalViewerLabel || 'Abrir no Google Docs ↗'}
-                                  </a>
-                                `
-                              : html`
-                                  <span style="color: #94a3b8; font-size: 0.8rem;">Disponível ao fazer upload no Drive</span>
-                                `}
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                              ${hasDocs
+                                ? html`
+                                    <a class="btn-external-link" href=${doc.externalViewerUrl} target="_blank" rel="noopener noreferrer">
+                                      <md-icon style="font-size: 14px;">open_in_new</md-icon>
+                                      ${doc.externalViewerLabel || 'Abrir no Google Docs ↗'}
+                                    </a>
+                                  `
+                                : ''}
+                              <md-outlined-button
+                                style="font-size: 0.78rem; --md-outlined-button-container-height: 30px; padding: 0 8px;"
+                                ?disabled=${this._syncingDocId === doc.id}
+                                @click=${() => this._syncDocViaController(doc)}
+                              >
+                                <md-icon slot="icon" style="font-size: 15px;">cloud_upload</md-icon>
+                                ${this._syncingDocId === doc.id ? 'Sincronizando...' : hasDocs ? 'Re-sincronizar' : 'Sincronizar no Docs'}
+                              </md-outlined-button>
+                            </div>
                           </td>
                         </tr>
                       `

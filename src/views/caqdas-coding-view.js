@@ -1,5 +1,6 @@
 import { LitElement, html, css } from 'lit'
 import { researchStorage } from '../services/storage-service.js'
+import { CaqdasDocxCodingController } from '../controllers/caqdas-controllers.js'
 import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
 import '@material/web/icon/icon.js'
@@ -126,6 +127,82 @@ export class CaqdasCodingView extends LitElement {
       gap: 12px;
       flex-wrap: wrap;
     }
+
+    .editor-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .zoom-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 4px;
+      border: 1px solid #ccc;
+      background: #fff;
+      cursor: pointer;
+      font-weight: bold;
+    }
+
+    .zoom-btn:hover {
+      background: #f0f0f0;
+    }
+
+    .ur-chips-container {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 12px;
+      padding: 10px;
+      background: #f4f8f8;
+      border-radius: 8px;
+      border: 1px solid #e0eeee;
+    }
+
+    .ur-chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 4px 8px;
+      background: #ffffff;
+      border: 1px solid #c2dede;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .ur-chip:hover {
+      background: #006a6a;
+      color: #ffffff;
+      border-color: #006a6a;
+    }
+
+    .btn-docs-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #e0f2fe;
+      color: #0284c7;
+      padding: 4px 10px;
+      border-radius: 6px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.8rem;
+      border: 1px solid #bae6fd;
+    }
+
+    .btn-docs-badge:hover {
+      background: #bae6fd;
+    }
   `
 
   static properties = {
@@ -133,7 +210,8 @@ export class CaqdasCodingView extends LitElement {
     codes: { state: true },
     selectedDocId: { state: true },
     selectedText: { state: true },
-    selectedCodeId: { state: true }
+    selectedCodeId: { state: true },
+    showUrList: { state: true }
   }
 
   constructor() {
@@ -143,6 +221,8 @@ export class CaqdasCodingView extends LitElement {
     this.selectedDocId = ''
     this.selectedText = ''
     this.selectedCodeId = ''
+    this.showUrList = true
+    this.readerController = new CaqdasDocxCodingController(this, { fontSize: 16 })
   }
 
   connectedCallback() {
@@ -166,6 +246,31 @@ export class CaqdasCodingView extends LitElement {
     if (!this.selectedCodeId && this.codes.length > 0) {
       this.selectedCodeId = this.codes[0].id
     }
+    this._syncReaderDoc()
+  }
+
+  _syncReaderDoc() {
+    const doc = this.documents.find((d) => d.id === this.selectedDocId)
+    if (doc) {
+      this.readerController.openDocument({
+        id: doc.id,
+        name: doc.title,
+        category: doc.type === 'docx' ? 'docx' : doc.type === 'pdf' ? 'pdf' : 'text',
+        extension: doc.extension || (doc.type === 'docx' ? '.docx' : '.txt'),
+        textContent: doc.content || '',
+        blocks: doc.docxBlocks || undefined
+      })
+    }
+  }
+
+  _selectDoc(id) {
+    this.selectedDocId = id
+    this.selectedText = ''
+    this._syncReaderDoc()
+  }
+
+  _selectRegistrationUnit(ur) {
+    this.selectedText = ur.text
   }
 
   _handleMouseUp(e) {
@@ -217,7 +322,7 @@ export class CaqdasCodingView extends LitElement {
         <select
           style="padding: 8px 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 0.95rem;"
           .value=${this.selectedDocId}
-          @change=${(e) => { this.selectedDocId = e.target.value; this.selectedText = ''; }}
+          @change=${(e) => this._selectDoc(e.target.value)}
         >
           ${this.documents.map(d => html`
             <option value=${d.id} ?selected=${d.id === this.selectedDocId}>${d.title} (${d.participant})</option>
@@ -227,15 +332,55 @@ export class CaqdasCodingView extends LitElement {
 
       <div class="layout">
         <div class="editor-card">
-          <h2 style="margin: 0 0 12px 0; font-size: 1.25rem; color: var(--md-sys-color-on-surface, #1c1b1f);">
-            ${doc?.title || 'Selecione um documento'}
-          </h2>
-          <div style="font-size: 0.85rem; color: #666; margin-bottom: 8px;">
-            Participante: <strong>${doc?.participant || 'N/A'}</strong> | Tipo: <em>${doc?.type || 'Texto'}</em>
+          <div class="editor-toolbar">
+            <div>
+              <h2 style="margin: 0; font-size: 1.25rem; color: var(--md-sys-color-on-surface, #1c1b1f);">
+                ${doc?.title || 'Selecione um documento'}
+              </h2>
+              <div style="font-size: 0.82rem; color: #666; margin-top: 4px;">
+                Participante: <strong>${doc?.participant || 'N/A'}</strong> | Tipo: <em>${doc?.type || 'Texto'}</em>
+                | Palavras: <strong>${this.readerController.document?.wordCount || doc?.content?.split(/\s+/).length || 0}</strong>
+              </div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 8px;">
+              ${doc?.externalViewerUrl
+                ? html`
+                    <a class="btn-docs-badge" href=${doc.externalViewerUrl} target="_blank" rel="noopener noreferrer">
+                      <md-icon style="font-size: 14px;">open_in_new</md-icon>
+                      ${doc.externalViewerLabel || 'Abrir no Google Docs ↗'}
+                    </a>
+                  `
+                : ''}
+
+              <span style="font-size: 0.8rem; color: #555;">Fonte: ${this.readerController.fontSize}px</span>
+              <button class="zoom-btn" title="Diminuir fonte" @click=${() => this.readerController.zoomOut()}>-</button>
+              <button class="zoom-btn" title="Aumentar fonte" @click=${() => this.readerController.zoomIn()}>+</button>
+            </div>
+          </div>
+
+          <!-- Unidades de Registro de Bardin (URs) -->
+          <div class="ur-chips-container">
+            <span style="font-size: 0.78rem; font-weight: 600; color: #004d40; width: 100%;">
+              Unidades de Registro (Bardin) — clique em uma UR para selecioná-la inteira para codificação:
+            </span>
+            ${this.readerController.toRegistrationUnits().map(
+              (ur) => html`
+                <button
+                  class="ur-chip"
+                  title="${ur.text.slice(0, 100)}..."
+                  @click=${() => this._selectRegistrationUnit(ur)}
+                >
+                  <md-icon style="font-size: 13px;">bookmark</md-icon>
+                  <strong>${ur.label}</strong> (${ur.wordCount} pal.)
+                </button>
+              `
+            )}
           </div>
 
           <div
             class="document-text-container"
+            style="font-size: ${this.readerController.fontSize}px;"
             @mouseup=${this._handleMouseUp}
           >
             ${doc?.content || 'Nenhum conteúdo disponível.'}

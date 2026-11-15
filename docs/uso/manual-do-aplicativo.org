@@ -71,10 +71,15 @@ O aplicativo integra o componente oficial de autenticação social do ecossistem
 - *Modo Demonstração Instantâneo*: Se os Client IDs não estiverem configurados ou o pesquisador estiver offline, o sistema simula uma sessão social instantânea para testes de fluxo e interface.
 - O acesso pode ser realizado tanto pelo menu lateral em **Login Social** (`#/conta/entrar`) quanto diretamente no painel **Google Drive & Docs** dentro da tela de Fontes (`#/fontes`).
 
-** 4.2 Sincronização em Nuvem e Pasta Designada no Google Drive
-Pesquisadores podem configurar onde seus arquivos de campo e entrevistas são armazenados:
-1. Acesse a aba **Google Drive & Docs** em *Fontes & Documentos*.
-2. Informe o **ID da Pasta no Google Drive** (código alfanumérico que consta na URL da pasta do Google Drive após `/folders/...`). Se deixado em branco, os arquivos são salvos na raiz do *Meu Drive*.
-3. Mantenha ativada a opção **Converter .docx em Google Docs nativo**.
-4. Ao realizar o upload no *Document Picker* ou *File Manager*, o arquivo é salvo no Google Drive e a API v3 converte automaticamente o formato DOCX em documento Google Docs.
-5. O sistema registra o link direto de visualização e edição, permitindo clicar em **Abrir no Google Docs ↗** para editar colaborativamente em tempo real no navegador.
+** 4.3 Controladores Reativos Headless e Extensibilidade (`caqdas-controllers.js`)
+O CAQDAS estende os novos controllers pré-programados do ecossistema FZL (`@fzl/webcomponents-lit/controllers`):
+1. *`CaqdasPersonalCloudDocsController` (estende `FzlPersonalCloudDocsController`)*:
+   - Orquestra a autenticação e o envio de arquivos para o **Google Docs / Google Drive** ou **OneDrive**.
+   - O hook `onPersonalDocUploaded()` atualiza automaticamente o documento no corpus com a URL externa (`externalViewerUrl`) e o status sincronizado.
+   - Fornece o método `syncCorpusDocument(doc)` para envio sob demanda de entrevistas existentes para o Google Docs com 1 clique.
+   - Conecta-se diretamente aos web components através de `picker.bindSocialAuth(authCtrl)` e `manager.bindSocialAuth(authCtrl)`.
+2. *`CaqdasDocxCodingController` (estende `FzlDocxReaderController`)*:
+   - Decompõe arquivos Word e transcrições em **Unidades de Registro (UR)** de Bardin (§1, §2, etc.) através do método `toRegistrationUnits()`.
+   - Na Área de Codificação (`#/codificacao`), permite clicar em uma UR para carregar instantaneamente o parágrafo inteiro para vinculação de códigos, além de controle de zoom tipográfico.
+3. *`CaqdasBookmarksController` (estende `FzlBookmarksController`)*:
+   - Gerencia documentos marcados como prioritários ou favoritos com sincronização em tempo real entre abas (`storage` event).

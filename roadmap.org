@@ -83,6 +83,10 @@ Permitir que o pesquisador crie projetos, defina participantes/casos, execute a 
   - Configuração de pasta designada de pesquisa no Google Drive (~googleDriveFolderId~).
   - Conversão automática de arquivos Word (~.docx~) em Google Docs nativo (~googleDriveConvertToDocs: true~).
   - Links e botões diretos **Abrir no Google Docs ↗** e **Abrir no Google Drive ↗** a partir do gerenciador e corpus de pesquisa.
+- [X] Tarefa 2.6: Controladores Reativos Headless Especializados (~caqdas-controllers.js~)
+  - Extensão de ~FzlPersonalCloudDocsController~ (~CaqdasPersonalCloudDocsController~) para sincronização direta do corpus com Google Docs sob demanda e hook ~onPersonalDocUploaded~.
+  - Extensão de ~FzlDocxReaderController~ (~CaqdasDocxCodingController~) para decomposição automática de textos/DOCX em Unidades de Registro de Bardin (~toRegistrationUnits()~) com seleção e codificação rápida.
+  - Vinculação declarativa via ~.bindSocialAuth()~ entre autenticação social e os componentes de importação e gerenciamento de arquivos.
 
 ** FASE 3: Transcrição Sincronizada de Áudio e Vídeo [0/3]
 :PROPERTIES:
