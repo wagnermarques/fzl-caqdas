@@ -3,6 +3,14 @@ import './styles/app.css'
 import 'fzl-fund-appshell--lit/styles/theme.css'
 import '@fzl/design-tokens/tokens.css'
 import { createAppShell, pattern } from 'fzl-fund-appshell--lit'
+import { researchStorage } from './services/storage-service.js'
+
+// Sincroniza Client IDs do Google e Microsoft para autenticação social em todo o appshell
+const initialCloudCfg = researchStorage.getCloudSyncConfig()
+if (typeof window !== 'undefined') {
+  window.__FZL_GOOGLE_CLIENT_ID__ = initialCloudCfg.googleClientId || import.meta.env?.VITE_GOOGLE_CLIENT_ID || ''
+  window.__FZL_MICROSOFT_CLIENT_ID__ = initialCloudCfg.microsoftClientId || import.meta.env?.VITE_MICROSOFT_CLIENT_ID || ''
+}
 
 // Import Views
 import './views/caqdas-home-view.js'

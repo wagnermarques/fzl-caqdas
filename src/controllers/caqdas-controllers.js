@@ -27,6 +27,12 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
       convertToGoogleDocs: cloudCfg.googleDriveConvertToDocs ?? true,
       googleDriveFolderId: cloudCfg.googleDriveFolderId || undefined,
       oneDriveFolderId: cloudCfg.oneDriveFolderId || undefined,
+      authConfig: {
+        googleClientId: cloudCfg.googleClientId || undefined,
+        microsoftClientId: cloudCfg.microsoftClientId || undefined,
+        microsoftTenantId: cloudCfg.microsoftTenantId || 'common',
+        allowDemoFallback: cloudCfg.allowDemoFallback ?? true
+      },
       ...options
     })
   }

@@ -7,6 +7,10 @@ const STORAGE_CLOUD_KEY = 'fzl_caqdas_cloud_sync_v1'
 
 const DEFAULT_CLOUD_CONFIG = {
   provider: 'google-drive',
+  googleClientId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GOOGLE_CLIENT_ID) || '',
+  microsoftClientId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MICROSOFT_CLIENT_ID) || '',
+  microsoftTenantId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MICROSOFT_TENANT_ID) || 'common',
+  allowDemoFallback: true,
   googleDriveFolderId: '',
   googleDriveConvertToDocs: true,
   googleAuthToken: '',

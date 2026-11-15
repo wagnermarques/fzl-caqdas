@@ -524,6 +524,12 @@ export class CaqdasSourcesView extends LitElement {
 
   _updateCloudConfig(patch) {
     this.cloudConfig = researchStorage.saveCloudSyncConfig(patch)
+    if (typeof window !== 'undefined') {
+      if (patch.googleClientId !== undefined) window.__FZL_GOOGLE_CLIENT_ID__ = patch.googleClientId
+      if (patch.microsoftClientId !== undefined) window.__FZL_MICROSOFT_CLIENT_ID__ = patch.microsoftClientId
+    }
+    this._bindControllers()
+    this.requestUpdate()
   }
 
   _simulateDocsSyncForSample() {
@@ -769,19 +775,85 @@ export class CaqdasSourcesView extends LitElement {
                         </div>
                       `
                     : html`
+                        <div style="margin-bottom: 12px; font-size: 0.84rem;">
+                          ${this.cloudConfig.googleClientId
+                            ? html`<span style="color: #166534; background: #dcfce7; padding: 2px 8px; border-radius: 4px; font-weight: 500;">
+                                🟢 Login Real Google Ativo
+                              </span>`
+                            : html`<span style="color: #92400e; background: #fef3c7; padding: 2px 8px; border-radius: 4px; font-weight: 500;">
+                                🟡 Modo Demonstração (Client ID não configurado)
+                              </span>`}
+                        </div>
                         <p style="font-size: 0.88rem; color: #64748b; margin-bottom: 14px;">
                           Faça login com sua conta Google ou Microsoft para sincronizar com sua pasta do Drive / OneDrive:
                         </p>
                         <fzl-social-login
                           layout="buttons"
                           show-divider="false"
+                          google-client-id=${this.cloudConfig.googleClientId || ''}
+                          microsoft-client-id=${this.cloudConfig.microsoftClientId || ''}
+                          microsoft-tenant-id=${this.cloudConfig.microsoftTenantId || 'common'}
+                          ?allow-demo-fallback=${Boolean(this.cloudConfig.allowDemoFallback)}
                           @fzl-social-login-success=${this._handleSocialLoginSuccess}
                           @fzl-social-login-error=${this._handleSocialLoginError}
                         ></fzl-social-login>
                       `}
                 </div>
 
-                <!-- Card 2: Configuração Google Drive -->
+                <!-- Card 2: Credenciais OAuth para Login Real -->
+                <div class="cloud-card">
+                  <h3>
+                    <md-icon>key</md-icon>
+                    Credenciais OAuth (Login Real)
+                  </h3>
+
+                  <p style="font-size: 0.82rem; color: #64748b; margin-top: 0;">
+                    Cole aqui seus Client IDs públicos para ativar o login real com suas contas do Google e Microsoft:
+                  </p>
+
+                  <div class="form-group">
+                    <md-outlined-text-field
+                      label="Google Cloud Client ID"
+                      supporting-text="Ex: 123456789-abc.apps.googleusercontent.com"
+                      style="width: 100%;"
+                      .value=${this.cloudConfig.googleClientId || ''}
+                      @input=${(e) => {
+                        this._updateCloudConfig({ googleClientId: e.target.value.trim() })
+                      }}
+                    ></md-outlined-text-field>
+                  </div>
+
+                  <div class="form-group">
+                    <md-outlined-text-field
+                      label="Microsoft Azure Client ID"
+                      supporting-text="Ex: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                      style="width: 100%;"
+                      .value=${this.cloudConfig.microsoftClientId || ''}
+                      @input=${(e) => {
+                        this._updateCloudConfig({ microsoftClientId: e.target.value.trim() })
+                      }}
+                    ></md-outlined-text-field>
+                  </div>
+
+                  <label class="switch-label">
+                    <input
+                      type="checkbox"
+                      style="width: 18px; height: 18px; cursor: pointer;"
+                      .checked=${Boolean(this.cloudConfig.allowDemoFallback)}
+                      @change=${(e) => {
+                        this._updateCloudConfig({ allowDemoFallback: e.target.checked })
+                      }}
+                    />
+                    <span>
+                      <strong>Permitir fallback de demonstração</strong>
+                      <div style="font-size: 0.78rem; color: #64748b;">
+                        Simula login quando o Client ID não estiver preenchido.
+                      </div>
+                    </span>
+                  </label>
+                </div>
+
+                <!-- Card 3: Configuração Google Drive -->
                 <div class="cloud-card">
                   <h3>
                     <md-icon>folder_shared</md-icon>
@@ -837,6 +909,53 @@ export class CaqdasSourcesView extends LitElement {
                   </div>
                 </div>
               </div>
+
+              <!-- Tutorial: Como Obter Credenciais Reais -->
+              <details style="margin-top: 20px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; font-size: 0.9rem; line-height: 1.6;">
+                <summary style="font-weight: 600; cursor: pointer; color: #006a6a;">
+                  📘 Como obter o seu Google Client ID e Microsoft Client ID para login real (Passo a Passo)
+                </summary>
+
+                <div style="margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;">
+                  <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px;">
+                    <h4 style="margin: 0 0 8px 0; color: #1e3a8a; display: flex; align-items: center; gap: 6px;">
+                      <md-icon style="font-size: 18px;">travel_explore</md-icon> 1. Google Cloud Console
+                    </h4>
+                    <ol style="margin: 0; padding-left: 18px; font-size: 0.85rem; color: #334155;">
+                      <li>Acesse o <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a> e crie um projeto (gratuito).</li>
+                      <li>Vá em <strong>Tela de consentimento OAuth</strong>, selecione <em>Externo</em> e informe o nome do seu aplicativo.</li>
+                      <li>Vá em <strong>Credenciais</strong> &gt; <strong>Criar Credenciais</strong> &gt; <strong>ID do cliente OAuth</strong>.</li>
+                      <li>Escolha o tipo <strong>Aplicativo da Web</strong>.</li>
+                      <li>Em <strong>Origens JavaScript autorizadas</strong>, adicione:
+                        <ul style="margin: 4px 0;">
+                          <li><code>https://wagnermarques.github.io</code></li>
+                          <li><code>http://localhost:5173</code> (se rodar em desenvolvimento local)</li>
+                        </ul>
+                      </li>
+                      <li>Em <strong>APIs e Serviços</strong>, ative a <strong>Google Drive API</strong> se desejar upload direto.</li>
+                      <li>Copie o <strong>Client ID</strong> gerado (ex: <code>...apps.googleusercontent.com</code>) e cole no campo <em>Google Cloud Client ID</em> acima!</li>
+                    </ol>
+                  </div>
+
+                  <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px;">
+                    <h4 style="margin: 0 0 8px 0; color: #0369a1; display: flex; align-items: center; gap: 6px;">
+                      <md-icon style="font-size: 18px;">cloud</md-icon> 2. Microsoft Azure Portal (Entra ID)
+                    </h4>
+                    <ol style="margin: 0; padding-left: 18px; font-size: 0.85rem; color: #334155;">
+                      <li>Acesse o <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noopener">Portal do Azure (Registros de Aplicativo)</a>.</li>
+                      <li>Clique em <strong>Novo registro</strong>.</li>
+                      <li>Selecione <em>Contas em qualquer diretório organizacional e contas pessoais da Microsoft (ex: Skype, Xbox, Outlook.com)</em>.</li>
+                      <li>Em <strong>URI de Redirecionamento</strong>, escolha plataforma <strong>SPA (Aplicativo de Página Única)</strong> e adicione:
+                        <ul style="margin: 4px 0;">
+                          <li><code>https://wagnermarques.github.io/fzl-caqdas/</code></li>
+                          <li><code>http://localhost:5173/</code></li>
+                        </ul>
+                      </li>
+                      <li>Copie o <strong>ID do aplicativo (cliente)</strong> (formato GUID) e cole no campo <em>Microsoft Azure Client ID</em> acima!</li>
+                    </ol>
+                  </div>
+                </div>
+              </details>
 
               <!-- Card 3: Lista de Documentos Sincronizados e Links Google Docs -->
               <div style="margin-top: 24px;">
