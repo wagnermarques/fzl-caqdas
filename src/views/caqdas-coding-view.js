@@ -1,4 +1,5 @@
 import { LitElement, html, css } from 'lit'
+import { authService } from 'fzl-fund-appshell--lit'
 import { researchStorage } from '../services/storage-service.js'
 import { CaqdasDocxCodingController, CaqdasPersonalCloudDocsController } from '../controllers/caqdas-controllers.js'
 import '@material/web/button/filled-button.js'
@@ -210,6 +211,7 @@ export class CaqdasCodingView extends LitElement {
     documents: { state: true },
     codes: { state: true },
     cloudConfig: { state: true },
+    currentUser: { state: true },
     selectedDocId: { state: true },
     selectedText: { state: true },
     selectedCodeId: { state: true },
@@ -222,6 +224,7 @@ export class CaqdasCodingView extends LitElement {
     this.documents = []
     this.codes = []
     this.cloudConfig = researchStorage.getCloudSyncConfig()
+    this.currentUser = authService.getCurrentUser?.() || null
     this.selectedDocId = ''
     this.selectedText = ''
     this.selectedCodeId = ''
@@ -234,7 +237,14 @@ export class CaqdasCodingView extends LitElement {
   connectedCallback() {
     super.connectedCallback()
     this._loadData()
+    this.currentUser = authService.getCurrentUser?.() || null
     this.cloudConfig = researchStorage.getCloudSyncConfig()
+    this._unsubscribeAuth = authService.subscribe((user, reason) => {
+      if (reason === 'socialAuthConfig') return
+      this.currentUser = user || null
+      this.cloudConfig = researchStorage.getCloudSyncConfig()
+      this.updateComplete.then(() => this._syncPersistenceChips())
+    })
     this._onDataChanged = () => this._loadData()
     this._onCloudChanged = (e) => {
       this.cloudConfig = e.detail || researchStorage.getCloudSyncConfig()
@@ -247,6 +257,7 @@ export class CaqdasCodingView extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback()
+    this._unsubscribeAuth?.()
     window.removeEventListener('caqdas-data-changed', this._onDataChanged)
     window.removeEventListener('caqdas-cloud-sync-changed', this._onCloudChanged)
   }
@@ -279,7 +290,7 @@ export class CaqdasCodingView extends LitElement {
       case 'rest':
         return 'REST Customizado'
       default:
-        return provider || 'Google Drive'
+        return provider || 'Armazenamento Local'
     }
   }
 
@@ -356,8 +367,21 @@ export class CaqdasCodingView extends LitElement {
   render() {
     const doc = this.documents.find(d => d.id === this.selectedDocId) || this.documents[0]
     const codeMap = new Map(this.codes.map(c => [c.id, c]))
-    const activeProvider = this.cloudConfig?.provider || 'google-drive'
+    const isAuthenticated = researchStorage.isCloudAuthenticated(this.currentUser)
+    const activeProvider = researchStorage.getEffectivePersistenceProvider(this.currentUser)
+    const isCloudActive = isAuthenticated && activeProvider !== 'local'
     const homeDirName = researchStorage.getHomeDirName()
+    const persistenceChipColor = isCloudActive ? '#0284c7' : '#475569'
+    const persistenceChipLabel = isCloudActive
+      ? `☁️ ${this._getProviderLabel(activeProvider)} · /${homeDirName}`
+      : `💾 Local (Navegador) · /${homeDirName}`
+    const docSyncState = researchStorage.getDocumentSyncState(doc)
+    const docSyncChip =
+      docSyncState === 'syncing'
+        ? { color: '#d97706', label: '🔄 Sincronizando...' }
+        : docSyncState === 'synced'
+          ? { color: '#0284c7', label: '☁️ Sincronizado' }
+          : { color: '#64748b', label: '💾 Local' }
     const docFolder = researchStorage.formatPersistenceFolder(
       doc?.folder || (doc?.type === 'interview' ? 'entrevistas' : 'documentos')
     )
@@ -392,15 +416,30 @@ export class CaqdasCodingView extends LitElement {
 
         <fzl-reader-chapterview
           variant="pill"
-          color="#0284c7"
+          color=${persistenceChipColor}
           selected
           data-storage-provider=${activeProvider}
           data-home-dir=${homeDirName}
-          label="☁️ ${this._getProviderLabel(activeProvider)} · /${homeDirName}"
+          label=${persistenceChipLabel}
           @fzl-click=${() => {
             window.location.hash = '#/fontes'
           }}
         ></fzl-reader-chapterview>
+
+        ${doc
+          ? html`
+              <fzl-reader-chapterview
+                variant="pill"
+                color=${docSyncChip.color}
+                selected
+                data-sync-state=${docSyncState}
+                label=${docSyncChip.label}
+                @fzl-click=${() => {
+                  window.location.hash = '#/fontes'
+                }}
+              ></fzl-reader-chapterview>
+            `
+          : ''}
       </div>
 
       <div class="layout">

@@ -303,7 +303,8 @@ export class CaqdasSourcesView extends LitElement {
     newFolder: { state: true },
     newContent: { state: true },
     selectedDocForReading: { state: true },
-    _syncingDocId: { state: true }
+    _syncingDocId: { state: true },
+    _syncingDocIds: { state: true }
   }
 
   constructor() {
@@ -316,6 +317,7 @@ export class CaqdasSourcesView extends LitElement {
     this.currentFolder = `/${researchStorage.getHomeDirName()}`
     this.captureStatus = ''
     this._syncingDocId = null
+    this._syncingDocIds = new Set()
     this.newTitle = ''
     this.newParticipant = ''
     this.newGroup = 'Geral'
@@ -356,23 +358,37 @@ export class CaqdasSourcesView extends LitElement {
     }
   }
 
-  async _syncDocViaController(doc) {
-    if (this._syncingDocId) return
-    this._syncingDocId = doc.id
+  _setDocSyncing(docId, active) {
+    const next = new Set(this._syncingDocIds)
+    if (active) next.add(docId)
+    else next.delete(docId)
+    this._syncingDocIds = next
+    this._syncingDocId = active ? docId : null
     this.requestUpdate()
+    this.updateComplete.then(() => this._refreshFileManager())
+  }
+
+  async _syncDocViaController(doc) {
+    if (!researchStorage.isCloudAuthenticated(this.currentUser)) {
+      alert('Faça login com Google ou Microsoft para sincronizar documentos na nuvem.')
+      return
+    }
+    if (this._syncingDocIds.has(doc.id)) return
+    this._setDocSyncing(doc.id, true)
 
     try {
+      const activeProvider = researchStorage.getEffectivePersistenceProvider(this.currentUser)
       const result = await this.cloudController.syncCorpusDocument(doc, {
         convertToGoogleDocs: this.cloudConfig.googleDriveConvertToDocs,
         folderId:
-          this.cloudConfig.provider === 'onedrive'
+          activeProvider === 'onedrive'
             ? this.cloudConfig.oneDriveFolderId
             : this.cloudConfig.googleDriveFolderId
       })
 
       if (result.success) {
         this._loadDocs()
-        const targetLabel = this.cloudConfig.provider === 'onedrive' ? 'OneDrive' : 'Google Docs'
+        const targetLabel = activeProvider === 'onedrive' ? 'OneDrive' : 'Google Docs'
         alert(`✔ Documento "${doc.title}" sincronizado com sucesso no ${targetLabel}!`)
       } else {
         alert(`Não foi possível sincronizar na nuvem: ${result.error || 'Erro desconhecido'}`)
@@ -380,8 +396,7 @@ export class CaqdasSourcesView extends LitElement {
     } catch (err) {
       alert(`Erro ao sincronizar: ${err.message}`)
     } finally {
-      this._syncingDocId = null
-      this.requestUpdate()
+      this._setDocSyncing(doc.id, false)
     }
   }
 
@@ -443,7 +458,14 @@ export class CaqdasSourcesView extends LitElement {
             : doc.type === 'image'
               ? 'image'
               : 'text'
-      const hasDocs = Boolean(doc.externalViewerUrl)
+      const syncState = researchStorage.getDocumentSyncState(doc, this._syncingDocIds)
+      const isSynced = syncState === 'synced'
+      const statusLabel =
+        syncState === 'syncing'
+          ? '🔄 Sincronizando...'
+          : isSynced
+            ? '☁️ Sincronizado'
+            : '💾 Documento Local'
       const folder = researchStorage.formatPersistenceFolder(
         doc.folder || (doc.type === 'interview' ? 'entrevistas' : 'documentos')
       )
@@ -454,24 +476,23 @@ export class CaqdasSourcesView extends LitElement {
         size: doc.size || (doc.content ? doc.content.length : 1024),
         extension: ext,
         category: cat,
-        status: doc.status || 'synced',
+        status: researchStorage.getFileManagerStatus(doc, this._syncingDocIds),
         uploadedAt: doc.uploadedAt || Date.now(),
         uploadedBy: doc.participant || 'Pesquisador',
         readProgress: doc.quotations && doc.quotations.length > 0 ? 100 : 30,
         tags: doc.tags || [doc.participant || 'participante', doc.group || 'geral'],
-        notes: `Participante: ${doc.participant || 'N/A'} | Excertos codificados: ${doc.quotations?.length || 0}`,
+        notes: `${statusLabel} | Participante: ${doc.participant || 'N/A'} | Excertos codificados: ${doc.quotations?.length || 0}`,
         textContent: doc.content || '',
         docxBlocks: doc.docxBlocks || undefined,
-        externalViewerUrl: doc.externalViewerUrl || undefined,
-        externalViewerLabel:
-          doc.externalViewerLabel ||
-          (hasDocs
-            ? doc.storageProvider === 'google-drive'
+        externalViewerUrl: isSynced ? doc.externalViewerUrl : undefined,
+        externalViewerLabel: isSynced
+          ? doc.externalViewerLabel ||
+            (doc.storageProvider === 'google-drive'
               ? 'Abrir no Google Docs ↗'
               : doc.storageProvider === 'onedrive'
                 ? 'Abrir no OneDrive ↗'
-                : 'Abrir na Nuvem ↗'
-            : undefined)
+                : 'Abrir na Nuvem ↗')
+          : undefined
       }
     })
   }
@@ -480,6 +501,7 @@ export class CaqdasSourcesView extends LitElement {
     const docs = e.detail?.documents || []
     if (docs.length === 0) return
 
+    const activeProvider = researchStorage.getEffectivePersistenceProvider(this.currentUser)
     let addedCount = 0
     for (const d of docs) {
       const existing = this.documents.find((existingDoc) => existingDoc.title === d.name)
@@ -488,7 +510,8 @@ export class CaqdasSourcesView extends LitElement {
       const participantName = d.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ')
       const ext = d.extension || (d.name.endsWith('.docx') ? '.docx' : '.txt')
       const docType = ext === '.docx' ? 'docx' : ext === '.pdf' ? 'pdf' : 'interview'
-      const activeProvider = this.cloudConfig.provider || 'google-drive'
+      const remoteUrl = d.externalViewerUrl || d.googleDocsUrl || undefined
+      const isUploadedRemote = d.uploadStatus === 'uploaded' && Boolean(remoteUrl)
 
       researchStorage.addDocument({
         title: d.name,
@@ -498,16 +521,18 @@ export class CaqdasSourcesView extends LitElement {
         type: docType,
         extension: ext,
         size: d.size || (d.textContent ? d.textContent.length : 2048),
-        status: d.uploadStatus === 'uploaded' ? 'synced' : 'synced',
-        storageProvider: d.storageProvider || activeProvider,
-        externalViewerUrl: d.externalViewerUrl || d.googleDocsUrl || undefined,
-        externalViewerLabel:
-          d.externalViewerLabel ||
-          (activeProvider === 'onedrive'
-            ? 'Abrir no OneDrive ↗'
-            : ext === '.docx'
-              ? 'Abrir no Google Docs ↗'
-              : 'Abrir no Google Drive ↗'),
+        status: isUploadedRemote ? 'synced' : 'local',
+        storageProvider: isUploadedRemote ? (d.storageProvider || activeProvider) : 'local',
+        externalViewerUrl: isUploadedRemote ? remoteUrl : undefined,
+        externalViewerLabel: isUploadedRemote
+          ? d.externalViewerLabel ||
+            (activeProvider === 'onedrive'
+              ? 'Abrir no OneDrive ↗'
+              : ext === '.docx'
+                ? 'Abrir no Google Docs ↗'
+                : 'Abrir no Google Drive ↗')
+          : undefined,
+        syncedAt: isUploadedRemote ? Date.now() : undefined,
         tags: d.tags && d.tags.length > 0 ? d.tags : ['importado', docType],
         content: d.textContent || (d.docxBlocks ? d.docxBlocks.map((b) => b.text).join('\n\n') : ''),
         docxBlocks: d.docxBlocks || undefined,
@@ -524,8 +549,9 @@ export class CaqdasSourcesView extends LitElement {
 
   async _saveMediaCaptureToCorpus({ file, title, content, mediaType }) {
     const captureFolder = researchStorage.formatPersistenceFolder('capturas-camera')
-    const activeProvider = this.cloudConfig.provider || 'google-drive'
-    const isCloudProvider = activeProvider === 'google-drive' || activeProvider === 'onedrive'
+    const isAuthenticated = researchStorage.isCloudAuthenticated(this.currentUser)
+    const activeProvider = researchStorage.getEffectivePersistenceProvider(this.currentUser)
+    const isCloudProvider = isAuthenticated && (activeProvider === 'google-drive' || activeProvider === 'onedrive')
 
     const savedDoc = researchStorage.addDocument({
       title,
@@ -535,20 +561,20 @@ export class CaqdasSourcesView extends LitElement {
       type: mediaType,
       extension: file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : '',
       size: file.size,
-      status: isCloudProvider ? 'pending-upload' : 'synced',
-      storageProvider: activeProvider,
-      tags: ['camera', mediaType, activeProvider],
+      status: 'local',
+      storageProvider: 'local',
+      tags: ['camera', mediaType],
       content,
       quotations: []
     })
 
-    this.captureStatus = `Captura "${title}" salva localmente em ${captureFolder}.`
+    this.captureStatus = `💾 Captura "${title}" salva localmente em ${captureFolder}.`
 
-    if (
-      this.cloudConfig.autoSyncToCloud &&
-      isCloudProvider &&
-      (this.currentUser || this.cloudConfig.googleAuthToken || this.cloudConfig.oneDriveAuthToken)
-    ) {
+    if (this.cloudConfig.autoSyncToCloud && isCloudProvider) {
+      this._setDocSyncing(savedDoc.id, true)
+      researchStorage.updateDocument(savedDoc.id, { status: 'syncing' })
+      this.captureStatus = `🔄 Sincronizando "${title}" em ${this._getProviderLabel(activeProvider)}...`
+
       try {
         const result = await this.cloudController.uploadToPersonalCloud(file, {
           convertToGoogleDocs: false,
@@ -565,14 +591,19 @@ export class CaqdasSourcesView extends LitElement {
             storageProvider: result.provider,
             externalViewerUrl: result.externalViewerUrl,
             externalViewerLabel: result.externalViewerLabel,
-            googleDriveFileId: result.fileId
+            googleDriveFileId: result.fileId,
+            syncedAt: Date.now()
           })
-          this.captureStatus = `✔ "${title}" salva em ${captureFolder} e sincronizada em ${result.provider === 'onedrive' ? 'OneDrive' : 'Google Drive'}.`
-        } else if (result.error) {
-          this.captureStatus = `Captura "${title}" salva em ${captureFolder}. Sincronização em nuvem pendente (${result.error}).`
+          this.captureStatus = `☁️ "${title}" salva em ${captureFolder} e sincronizada em ${result.provider === 'onedrive' ? 'OneDrive' : 'Google Drive'}.`
+        } else {
+          researchStorage.updateDocument(savedDoc.id, { status: 'local' })
+          this.captureStatus = `💾 "${title}" salva localmente em ${captureFolder}. Envio para nuvem não concluído (${result.error || 'pendente'}).`
         }
       } catch (err) {
-        this.captureStatus = `Captura "${title}" salva em ${captureFolder}. Sincronização pendente: ${err.message}`
+        researchStorage.updateDocument(savedDoc.id, { status: 'local' })
+        this.captureStatus = `💾 "${title}" salva localmente em ${captureFolder}. Envio pendente: ${err.message}`
+      } finally {
+        this._setDocSyncing(savedDoc.id, false)
       }
     }
 
@@ -589,12 +620,13 @@ export class CaqdasSourcesView extends LitElement {
     const title = `foto-campo-${stamp}${ext}`
     const file = new File([photo.blob], title, { type: mime })
     const homeDir = researchStorage.getHomeDirName()
+    const effectiveProvider = researchStorage.getEffectivePersistenceProvider(this.currentUser)
 
     await this._saveMediaCaptureToCorpus({
       file,
       title,
       mediaType: 'image',
-      content: `Registro fotográfico de campo capturado via fzl-camera-capture (${photo.width || '?'}x${photo.height || '?'}, câmera: ${photo.facingMode || 'environment'}).\nPasta de persistência: /${homeDir}/capturas-camera\nProvedor configurado: ${this.cloudConfig.provider || 'google-drive'}`
+      content: `Registro fotográfico de campo capturado via fzl-camera-capture (${photo.width || '?'}x${photo.height || '?'}, câmera: ${photo.facingMode || 'environment'}).\nPasta de persistência: /${homeDir}/capturas-camera\nPersistência efetiva no momento: ${this._getProviderLabel(effectiveProvider)}`
     })
   }
 
@@ -607,12 +639,13 @@ export class CaqdasSourcesView extends LitElement {
     const title = `video-campo-${stamp}${ext}`
     const file = new File([video.blob], title, { type: mime })
     const homeDir = researchStorage.getHomeDirName()
+    const effectiveProvider = researchStorage.getEffectivePersistenceProvider(this.currentUser)
 
     await this._saveMediaCaptureToCorpus({
       file,
       title,
       mediaType: 'video',
-      content: `Registro em vídeo de campo capturado via fzl-camera-capture (duração: ${video.durationSeconds || 0}s, formato: ${mime}).\nPasta de persistência: /${homeDir}/capturas-camera\nProvedor configurado: ${this.cloudConfig.provider || 'google-drive'}`
+      content: `Registro em vídeo de campo capturado via fzl-camera-capture (duração: ${video.durationSeconds || 0}s, formato: ${mime}).\nPasta de persistência: /${homeDir}/capturas-camera\nPersistência efetiva no momento: ${this._getProviderLabel(effectiveProvider)}`
     })
   }
 
@@ -627,10 +660,11 @@ export class CaqdasSourcesView extends LitElement {
 
       researchStorage.updateDocument(doc.id, {
         status: 'synced',
-        storageProvider: uploadResult.provider || this.cloudConfig.provider,
+        storageProvider: uploadResult.provider || researchStorage.getEffectivePersistenceProvider(this.currentUser),
         externalViewerUrl,
         externalViewerLabel,
-        googleDriveFileId: uploadResult.fileId || doc.googleDriveFileId
+        googleDriveFileId: uploadResult.fileId || doc.googleDriveFileId,
+        syncedAt: Date.now()
       })
       this._loadDocs()
     }
@@ -639,14 +673,25 @@ export class CaqdasSourcesView extends LitElement {
   _handleFileUploaded(e) {
     const detail = e.detail || {}
     const file = detail.file
-    if (file && detail.externalViewerUrl) {
+    const result = detail.result || detail
+    const viewerUrl = result.externalViewerUrl || detail.externalViewerUrl
+    if (file && viewerUrl) {
       researchStorage.updateDocument(file.id, {
-        externalViewerUrl: detail.externalViewerUrl,
-        externalViewerLabel: detail.externalViewerLabel || 'Abrir no Google Docs ↗',
-        status: 'synced'
+        externalViewerUrl: viewerUrl,
+        externalViewerLabel: result.externalViewerLabel || detail.externalViewerLabel || 'Abrir na Nuvem ↗',
+        storageProvider: result.provider || researchStorage.getEffectivePersistenceProvider(this.currentUser),
+        googleDriveFileId: result.fileId || file.externalFileId,
+        status: 'synced',
+        syncedAt: Date.now()
       })
       this._loadDocs()
     }
+  }
+
+  _handleFileUploadError(e) {
+    const msg = e.detail?.error || 'Não foi possível concluir o envio para a nuvem.'
+    alert(msg)
+    this._refreshFileManager()
   }
 
   _handleFileRead(e) {
@@ -684,8 +729,8 @@ export class CaqdasSourcesView extends LitElement {
       type: 'interview',
       extension: '.txt',
       size: this.newContent.length,
-      status: 'synced',
-      storageProvider: this.cloudConfig.provider || 'google-drive',
+      status: 'local',
+      storageProvider: 'local',
       tags: ['manual', 'entrevista'],
       content: this.newContent.trim(),
       quotations: []
@@ -696,7 +741,7 @@ export class CaqdasSourcesView extends LitElement {
     this.newFolder = researchStorage.formatPersistenceFolder('entrevistas')
     this.newContent = ''
     this.activeTab = 'manager'
-    alert('Documento cadastrado com sucesso!')
+    alert('Documento cadastrado localmente com sucesso!')
   }
 
   async _handleSocialLoginSuccess(e) {
@@ -712,6 +757,7 @@ export class CaqdasSourcesView extends LitElement {
 
   _handleSignOut() {
     authService.signOut()
+    researchStorage.resetProviderWhenUnauthenticated(null)
     alert('Sessão encerrada.')
   }
 
@@ -743,17 +789,22 @@ export class CaqdasSourcesView extends LitElement {
       case 'rest':
         return 'Servidor REST Customizado'
       default:
-        return provider || 'Google Drive & Docs'
+        return provider || 'Armazenamento Local (Navegador)'
     }
   }
 
   _simulateDocsSyncForSample() {
+    if (!researchStorage.isCloudAuthenticated(this.currentUser)) {
+      alert('Faça login com Google ou Microsoft antes de simular a sincronização na nuvem.')
+      return
+    }
     const docxDocs = this.documents.filter((d) => d.extension === '.docx' || d.type === 'docx')
     if (docxDocs.length === 0) {
       alert('Nenhum documento .docx encontrado no corpus para sincronizar.')
       return
     }
 
+    const nowIso = new Date().toISOString()
     for (const d of docxDocs) {
       const mockId = `1docs_${d.id}_${Date.now()}`
       researchStorage.updateDocument(d.id, {
@@ -761,7 +812,8 @@ export class CaqdasSourcesView extends LitElement {
         storageProvider: 'google-drive',
         externalViewerUrl: `https://docs.google.com/document/d/${mockId}/edit`,
         externalViewerLabel: 'Abrir no Google Docs ↗',
-        googleDriveFileId: mockId
+        googleDriveFileId: mockId,
+        syncedAt: nowIso
       })
     }
     this._loadDocs()
@@ -770,8 +822,11 @@ export class CaqdasSourcesView extends LitElement {
 
   render() {
     const homeDirName = researchStorage.getHomeDirName()
-    const rawProvider = this.cloudConfig.provider || 'google-drive'
+    const isAuthenticated = researchStorage.isCloudAuthenticated(this.currentUser)
+    const rawProvider = researchStorage.getEffectivePersistenceProvider(this.currentUser)
     const effectiveProvider = rawProvider === 'local' ? 'rest' : rawProvider
+    const allowCloudUpload = isAuthenticated && (rawProvider === 'google-drive' || rawProvider === 'onedrive')
+    const anySyncing = this._syncingDocIds.size > 0
     const activeFolder = this.currentFolder || `/${homeDirName}`
     const socialAuthCfg = authService.getSocialAuthConfig?.() || {}
     const effectiveGoogleClientId = this.cloudConfig.googleClientId || socialAuthCfg.googleClientId || ''
@@ -785,10 +840,10 @@ export class CaqdasSourcesView extends LitElement {
       /@(outlook|hotmail|live|msn)\./i.test(this.currentUser?.email || '')
 
     const providerItems = [
-      { id: 'google-drive', value: 'google-drive', label: 'Google Drive (GDrive)', color: '#0284c7' },
-      { id: 'onedrive', value: 'onedrive', label: 'Microsoft OneDrive', color: '#0369a1' },
-      { id: 'local', value: 'local', label: 'Armazenamento Local', color: '#006a6a' },
-      { id: 'rest', value: 'rest', label: 'REST Customizado', color: '#475569' }
+      { id: 'google-drive', value: 'google-drive', label: 'Google Drive (GDrive)', color: '#0284c7', disabled: !isAuthenticated },
+      { id: 'onedrive', value: 'onedrive', label: 'Microsoft OneDrive', color: '#0369a1', disabled: !isAuthenticated },
+      { id: 'local', value: 'local', label: 'Armazenamento Local', color: '#006a6a', disabled: !isAuthenticated },
+      { id: 'rest', value: 'rest', label: 'REST Customizado', color: '#475569', disabled: !isAuthenticated }
     ]
 
     const folderItems = [
@@ -804,8 +859,11 @@ export class CaqdasSourcesView extends LitElement {
           <div>
             <h1>Corpus de Pesquisa &amp; Gerenciador de Documentos</h1>
             <p style="margin: 6px 0 0 0; color: var(--md-sys-color-on-surface-variant, #49454f);">
-              Colete entrevistas, documentos Word (.docx), PDFs e capturas de campo, organize na pasta inicial
-              <code>/${homeDirName}</code> e sincronize automaticamente com Google Drive ou Microsoft OneDrive.
+              ${isAuthenticated
+                ? html`Colete entrevistas, documentos Word (.docx), PDFs e capturas de campo na pasta inicial
+                    <code>/${homeDirName}</code> com destino configurável (<strong>${this._getProviderLabel(rawProvider)}</strong>).`
+                : html`Colete e organize entrevistas, documentos Word (.docx), PDFs e capturas de campo localmente em
+                    <code>/${homeDirName}</code>. Faça login com Google ou Microsoft para habilitar a sincronização em nuvem.`}
             </p>
           </div>
 
@@ -838,31 +896,45 @@ export class CaqdasSourcesView extends LitElement {
               `
             : html`
                 <span class="user-pill" style="border-color: #cbd5e1; background: #f8fafc; color: #475569;">
-                  <md-icon style="font-size: 18px; color: #0284c7;">account_circle</md-icon>
-                  Não autenticado (Login Social com Google / Microsoft disponível)
+                  <md-icon style="font-size: 18px; color: #64748b;">account_circle</md-icon>
+                  Não autenticado — opere localmente ou <a href="#/conta/entrar" style="color: #0284c7; font-weight: 600;">entre</a>
                 </span>
               `}
 
-          <span>
-            ☁️ Persistência ativa: <strong>${this._getProviderLabel(rawProvider)}</strong>
-            | Pasta Inicial: <code>/${homeDirName}</code>
-            ${rawProvider === 'google-drive' && this.cloudConfig.googleDriveFolderId
-              ? html`| Folder ID: <code>${this.cloudConfig.googleDriveFolderId}</code>`
-              : rawProvider === 'onedrive' && this.cloudConfig.oneDriveFolderId
-                ? html`| OneDrive ID: <code>${this.cloudConfig.oneDriveFolderId}</code>`
-                : ''}
-            ${rawProvider === 'google-drive' && this.cloudConfig.googleDriveConvertToDocs
-              ? html`| <span style="color: #006a6a; font-weight: 500;">✓ Conversão DOCX → Google Docs Ativa</span>`
-              : ''}
-          </span>
+          ${isAuthenticated
+            ? html`
+                <span>
+                  ${anySyncing ? '🔄 Sincronizando...' : '☁️ Persistência ativa:'}
+                  <strong>${this._getProviderLabel(rawProvider)}</strong>
+                  | Pasta Inicial: <code>/${homeDirName}</code>
+                  ${rawProvider === 'google-drive' && this.cloudConfig.googleDriveFolderId
+                    ? html`| Folder ID: <code>${this.cloudConfig.googleDriveFolderId}</code>`
+                    : rawProvider === 'onedrive' && this.cloudConfig.oneDriveFolderId
+                      ? html`| OneDrive ID: <code>${this.cloudConfig.oneDriveFolderId}</code>`
+                      : ''}
+                  ${rawProvider === 'google-drive' && this.cloudConfig.googleDriveConvertToDocs
+                    ? html`| <span style="color: #006a6a; font-weight: 500;">✓ Conversão DOCX → Google Docs Ativa</span>`
+                    : ''}
+                </span>
+              `
+            : html`
+                <span style="color: #475569;">
+                  💾 <strong>Armazenamento Local (Offline / Navegador)</strong> | Pasta: <code>/${homeDirName}</code>
+                  · <em>Sem sincronização em nuvem enquanto desconectado</em>
+                </span>
+              `}
         </div>
 
         <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
           <fzl-reader-chapterview
             variant="pill"
-            color="#006a6a"
+            color=${!isAuthenticated ? '#475569' : anySyncing ? '#d97706' : '#006a6a'}
             selected
-            label="${this._getProviderLabel(rawProvider)} · /${homeDirName}"
+            label=${!isAuthenticated
+              ? `💾 Local · /${homeDirName}`
+              : anySyncing
+                ? `🔄 Sincronizando · /${homeDirName}`
+                : `${rawProvider === 'local' ? '💾' : '☁️'} ${this._getProviderLabel(rawProvider)} · /${homeDirName}`}
             @fzl-click=${() => {
               this.activeTab = 'cloud'
             }}
@@ -889,14 +961,20 @@ export class CaqdasSourcesView extends LitElement {
             aria-label="Selecionar provedor de persistência"
             selection-mode="single"
             .items=${providerItems}
-            .selected=${rawProvider}
+            .selected=${isAuthenticated ? rawProvider : ''}
             @fzl-change=${(e) => {
+              if (!isAuthenticated) return
               const selected = e.detail?.selected
               if (selected) {
                 this._updateCloudConfig({ provider: selected })
               }
             }}
           ></fzl-reader-chapterview-group>
+          ${!isAuthenticated
+            ? html`<span style="font-size: 0.78rem; color: #64748b;">
+                🔒 Desabilitado até você fazer login (<a href="#/conta/entrar" style="color: #0284c7;">Entrar</a>)
+              </span>`
+            : ''}
         </div>
 
         <div class="selector-group">
@@ -975,20 +1053,24 @@ export class CaqdasSourcesView extends LitElement {
             <div class="card">
               <div class="info-alert">
                 📂 <strong>Explorador de Arquivos &amp; Leitor Integrado:</strong>
-                Operando em <code>${activeFolder}</code> com destino <strong>${this._getProviderLabel(rawProvider)}</strong>.
+                ${isAuthenticated
+                  ? html`Operando em <code>${activeFolder}</code> com persistência configurada para
+                      <strong>${this._getProviderLabel(rawProvider)}</strong>.`
+                  : html`Operando em modo <strong>Local (Navegador)</strong> na pasta <code>${activeFolder}</code>. Os documentos mostrados aqui são apenas locais enquanto você não estiver conectado.`}
                 Alterne entre visualização em <strong>Tabela</strong> e <strong>Grade</strong>, navegue pelas pastas sob
-                <code>/${homeDirName}</code>, consulte status de sincronização e clique em <strong>Continuar Leitura</strong>.
+                <code>/${homeDirName}</code> e clique em <strong>Continuar Leitura</strong>.
               </div>
 
               <fzl-file-manager
                 view-mode="table"
                 current-folder=${activeFolder}
+                .includeLocalBookmarks=${false}
                 storage-provider=${effectiveProvider}
-                google-drive-folder-id=${this.cloudConfig.googleDriveFolderId || ''}
-                one-drive-folder-id=${this.cloudConfig.oneDriveFolderId || ''}
-                ?google-drive-convert-to-docs=${this.cloudConfig.googleDriveConvertToDocs}
-                google-auth-token=${this.cloudConfig.googleAuthToken || ''}
-                one-drive-auth-token=${this.cloudConfig.oneDriveAuthToken || ''}
+                google-drive-folder-id=${allowCloudUpload ? (this.cloudConfig.googleDriveFolderId || '') : ''}
+                one-drive-folder-id=${allowCloudUpload ? (this.cloudConfig.oneDriveFolderId || '') : ''}
+                ?google-drive-convert-to-docs=${allowCloudUpload && Boolean(this.cloudConfig.googleDriveConvertToDocs)}
+                google-auth-token=${allowCloudUpload ? (this.cloudConfig.googleAuthToken || '') : ''}
+                one-drive-auth-token=${allowCloudUpload ? (this.cloudConfig.oneDriveAuthToken || '') : ''}
                 .fetchHandler=${() => Promise.resolve(this._getManagedFiles())}
                 @fzl-folder-change=${(e) => {
                   if (e.detail?.folder) {
@@ -997,7 +1079,9 @@ export class CaqdasSourcesView extends LitElement {
                 }}
                 @fzl-file-read=${this._handleFileRead}
                 @fzl-file-delete=${this._handleFileDelete}
+                @fzl-file-upload-success=${this._handleFileUploaded}
                 @fzl-file-uploaded=${this._handleFileUploaded}
+                @fzl-file-upload-error=${this._handleFileUploadError}
                 @fzl-file-open-study=${() => {
                   window.location.hash = '#/codificacao'
                 }}
@@ -1020,9 +1104,12 @@ export class CaqdasSourcesView extends LitElement {
         ? html`
             <div class="card">
               <div class="info-alert">
-                📥 <strong>Upload Multiplataforma com Integração em Nuvem:</strong>
-                Destino ativo: <strong>${this._getProviderLabel(rawProvider)}</strong> na pasta inicial
-                <code>/${homeDirName}</code>. Arraste e solte arquivos em Word (<code>.docx</code>), PDF, Markdown, TXT ou CSV/JSON.
+                📥 <strong>Upload &amp; Importação de Documentos:</strong>
+                ${isAuthenticated && rawProvider !== 'local'
+                  ? html`Destino ativo: <strong>${this._getProviderLabel(rawProvider)}</strong> na pasta inicial
+                      <code>/${homeDirName}</code>.`
+                  : html`Modo <strong>Local</strong> ativo na pasta <code>/${homeDirName}</code> — os documentos importados ficam salvos apenas localmente neste navegador (sem envio para a nuvem).`}
+                Arraste e solte arquivos em Word (<code>.docx</code>), PDF, Markdown, TXT ou CSV/JSON.
               </div>
 
               <fzl-document-picker
@@ -1031,11 +1118,11 @@ export class CaqdasSourcesView extends LitElement {
                 allow-folder-scan
                 start-in="documents"
                 storage-provider=${effectiveProvider}
-                google-drive-folder-id=${this.cloudConfig.googleDriveFolderId || ''}
-                one-drive-folder-id=${this.cloudConfig.oneDriveFolderId || ''}
-                ?google-drive-convert-to-docs=${this.cloudConfig.googleDriveConvertToDocs}
-                google-auth-token=${this.cloudConfig.googleAuthToken || ''}
-                one-drive-auth-token=${this.cloudConfig.oneDriveAuthToken || ''}
+                google-drive-folder-id=${allowCloudUpload ? (this.cloudConfig.googleDriveFolderId || '') : ''}
+                one-drive-folder-id=${allowCloudUpload ? (this.cloudConfig.oneDriveFolderId || '') : ''}
+                ?google-drive-convert-to-docs=${allowCloudUpload && Boolean(this.cloudConfig.googleDriveConvertToDocs)}
+                google-auth-token=${allowCloudUpload ? (this.cloudConfig.googleAuthToken || '') : ''}
+                one-drive-auth-token=${allowCloudUpload ? (this.cloudConfig.oneDriveAuthToken || '') : ''}
                 @fzl-document-select=${this._handleDocumentSelect}
                 @fzl-document-upload-success=${this._handleUploadSuccess}
                 @fzl-document-open-study=${(e) => {
@@ -1052,8 +1139,11 @@ export class CaqdasSourcesView extends LitElement {
             <div class="card">
               <div class="info-alert">
                 📷 <strong>Captura de Campo Integrada (<code>&lt;fzl-camera-capture&gt;</code>):</strong>
-                Fotos de documentos e vídeos de observação são registrados em <code>/${homeDirName}/capturas-camera</code>
-                e enviados automaticamente para <strong>${this._getProviderLabel(rawProvider)}</strong> quando a sincronização estiver ativa.
+                ${allowCloudUpload && this.cloudConfig.autoSyncToCloud
+                  ? html`Fotos de documentos e vídeos de observação são registrados em <code>/${homeDirName}/capturas-camera</code>
+                      e sincronizados automaticamente com <strong>${this._getProviderLabel(rawProvider)}</strong>.`
+                  : html`Fotos de documentos e vídeos de observação são registrados <strong>apenas localmente</strong> em
+                      <code>/${homeDirName}/capturas-camera</code>. Conecte uma conta Google ou Microsoft para ativar o envio à nuvem.`}
               </div>
 
               <fzl-camera-capture
@@ -1078,9 +1168,9 @@ export class CaqdasSourcesView extends LitElement {
                 Persistência de Arquivos &amp; Sincronização (Google Drive / OneDrive)
               </h2>
               <p style="color: #4b5563; font-size: 0.95rem; line-height: 1.5;">
-                Ao autenticar com sua conta <strong>Google</strong> ou <strong>Microsoft</strong>, o aplicativo configura
-                automaticamente todos os web components para persistir seus dados no provedor correspondente usando a pasta
-                inicial configurada (padrão: <code>${DEFAULT_HOME_DIR}</code>). Você pode alterar manualmente qualquer preferência abaixo.
+                Ao autenticar com sua conta <strong>Google</strong> ou <strong>Microsoft</strong>, as opções de destino de
+                persistência são habilitadas e configuradas automaticamente para o provedor correspondente usando a pasta inicial
+                (padrão: <code>${DEFAULT_HOME_DIR}</code>). Enquanto estiver desconectado, todas as opções de nuvem ficam bloqueadas e o app salva apenas localmente.
               </p>
 
               <div class="cloud-grid">
@@ -1122,7 +1212,7 @@ export class CaqdasSourcesView extends LitElement {
                               </span>`}
                         </div>
                         <p style="font-size: 0.88rem; color: #64748b; margin-bottom: 14px;">
-                          Faça login com sua conta real do Google ou Microsoft para configurar e sincronizar com seu Google Drive / OneDrive:
+                          Faça login com sua conta real do Google ou Microsoft para habilitar e configurar a persistência na nuvem:
                         </p>
                         <fzl-social-login
                           layout="buttons"
@@ -1150,6 +1240,7 @@ export class CaqdasSourcesView extends LitElement {
                     </label>
                     <select
                       class="select-control"
+                      ?disabled=${!isAuthenticated}
                       .value=${rawProvider}
                       @change=${(e) => {
                         this._updateCloudConfig({ provider: e.target.value })
@@ -1160,6 +1251,11 @@ export class CaqdasSourcesView extends LitElement {
                       <option value="local">Armazenamento Local (Navegador / Offline)</option>
                       <option value="rest">Backend REST Customizado</option>
                     </select>
+                    ${!isAuthenticated
+                      ? html`<div style="font-size: 0.78rem; color: #64748b; margin-top: 6px;">
+                          🔒 Faça login com uma conta padrão ou com suas credenciais OAuth para habilitar a seleção do destino de persistência.
+                        </div>`
+                      : ''}
                   </div>
 
                   <label class="switch-label">
@@ -1375,11 +1471,14 @@ export class CaqdasSourcesView extends LitElement {
                 </div>
               </details>
 
-              <!-- Card 3: Lista de Documentos Sincronizados e Links Google Docs -->
+              <!-- Card 3: Lista de Documentos & Estado de Sincronização -->
               <div style="margin-top: 24px;">
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                  <h3 style="margin: 0; color: #006a6a;">Documentos no Corpus com Integração Google Docs</h3>
-                  <md-outlined-button @click=${this._simulateDocsSyncForSample}>
+                  <h3 style="margin: 0; color: #006a6a;">Documentos no Corpus &amp; Estado de Sincronização</h3>
+                  <md-outlined-button
+                    ?disabled=${!isAuthenticated || anySyncing}
+                    @click=${this._simulateDocsSyncForSample}
+                  >
                     <md-icon slot="icon">sync</md-icon>
                     Sincronizar Arquivos DOCX no Google Docs (Simulação)
                   </md-outlined-button>
@@ -1391,23 +1490,38 @@ export class CaqdasSourcesView extends LitElement {
                       <th>Documento</th>
                       <th>Tipo</th>
                       <th>Participante / Pasta</th>
-                      <th>Status de Nuvem</th>
-                      <th>Visualizador / Edição</th>
+                      <th>Status de Sincronização</th>
+                      <th>Visualizador / Ação</th>
                     </tr>
                   </thead>
                   <tbody>
                     ${this.documents.map((doc) => {
+                      const syncState = researchStorage.getDocumentSyncState(doc, this._syncingDocIds)
                       const hasDocs = Boolean(doc.externalViewerUrl)
+                      const isSyncing = syncState === 'syncing'
+                      const hasRemote = syncState === 'synced'
                       const formattedFolder = researchStorage.formatPersistenceFolder(doc.folder || 'entrevistas')
+                      const statusColor = isSyncing ? '#d97706' : hasRemote ? '#0284c7' : '#64748b'
+                      const statusIcon = isSyncing ? 'sync' : hasRemote ? 'cloud_done' : 'computer'
+                      const statusLabel = isSyncing ? 'Sincronizando...' : hasRemote ? 'Sincronizado' : 'Local'
+                      const actionLabel = isSyncing
+                        ? 'Sincronizando...'
+                        : !isAuthenticated
+                          ? 'Requer Login'
+                          : rawProvider === 'local'
+                            ? 'Modo Local'
+                            : hasRemote
+                              ? 'Re-sincronizar'
+                              : 'Sincronizar na Nuvem'
                       return html`
                         <tr>
                           <td><strong>${doc.title}</strong></td>
                           <td><code>${doc.extension || doc.type}</code></td>
                           <td>${doc.participant || 'N/A'} (<code>${formattedFolder}</code>)</td>
                           <td>
-                            <span style="display: inline-flex; align-items: center; gap: 4px; color: ${hasDocs ? '#0284c7' : '#64748b'};">
-                              <md-icon style="font-size: 16px;">${hasDocs ? 'cloud_done' : 'cloud_queue'}</md-icon>
-                              ${hasDocs ? 'Sincronizado' : 'Local'}
+                            <span style="display: inline-flex; align-items: center; gap: 4px; font-weight: 500; color: ${statusColor};">
+                              <md-icon style="font-size: 16px;">${statusIcon}</md-icon>
+                              ${statusLabel}
                             </span>
                           </td>
                           <td>
@@ -1416,17 +1530,17 @@ export class CaqdasSourcesView extends LitElement {
                                 ? html`
                                     <a class="btn-external-link" href=${doc.externalViewerUrl} target="_blank" rel="noopener noreferrer">
                                       <md-icon style="font-size: 14px;">open_in_new</md-icon>
-                                      ${doc.externalViewerLabel || 'Abrir no Google Docs ↗'}
+                                      ${doc.externalViewerLabel || 'Abrir na Nuvem ↗'}
                                     </a>
                                   `
                                 : ''}
                               <md-outlined-button
                                 style="font-size: 0.78rem; --md-outlined-button-container-height: 30px; padding: 0 8px;"
-                                ?disabled=${this._syncingDocId === doc.id}
+                                ?disabled=${!isAuthenticated || rawProvider === 'local' || isSyncing}
                                 @click=${() => this._syncDocViaController(doc)}
                               >
-                                <md-icon slot="icon" style="font-size: 15px;">cloud_upload</md-icon>
-                                ${this._syncingDocId === doc.id ? 'Sincronizando...' : hasDocs ? 'Re-sincronizar' : 'Sincronizar na Nuvem'}
+                                <md-icon slot="icon" style="font-size: 15px;">${isSyncing ? 'sync' : 'cloud_upload'}</md-icon>
+                                ${actionLabel}
                               </md-outlined-button>
                             </div>
                           </td>

@@ -41,6 +41,7 @@ createAppShell({
       console.info(`[FZL CAQDAS] Usuário autenticado (${reason || 'sessão'}):`, user?.name, user?.email, user?.provider)
     },
     'auth:logout': ({ reason }) => {
+      researchStorage.resetProviderWhenUnauthenticated(null)
       console.info(`[FZL CAQDAS] Sessão encerrada (${reason || 'manual'})`)
     },
   },
@@ -140,9 +141,12 @@ createAppShell({
   }
 })
 
-// Garante ajuste automático de persistência (GDrive / OneDrive) ao restaurar ou atualizar a sessão autenticada
+// Garante ajuste automático de persistência (GDrive / OneDrive quando autenticado; Local quando deslogado)
 authService.subscribe((user, reason) => {
-  if (user && reason !== 'socialAuthConfig') {
+  if (reason === 'socialAuthConfig') return
+  if (user) {
     researchStorage.syncProviderFromAuthUser(user)
+  } else {
+    researchStorage.resetProviderWhenUnauthenticated(null)
   }
 })

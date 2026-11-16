@@ -8,7 +8,7 @@ const STORAGE_CLOUD_KEY = 'fzl_caqdas_cloud_sync_v1'
 export const DEFAULT_HOME_DIR = 'APP-CADDAS-HOME-DIR'
 
 const DEFAULT_CLOUD_CONFIG = {
-  provider: 'google-drive',
+  provider: 'local',
   autoConfigureByAuthProvider: true,
   homeDirName: DEFAULT_HOME_DIR,
   googleClientId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GOOGLE_CLIENT_ID) || '',
@@ -54,13 +54,80 @@ class ResearchStorageService {
     const raw = localStorage.getItem(STORAGE_KEY)
     if (raw) {
       try {
-        return JSON.parse(raw)
+        const parsed = JSON.parse(raw)
+        if (Array.isArray(parsed?.documents)) {
+          let sanitized = false
+          for (const doc of parsed.documents) {
+            if (doc.status === 'synced' && !this.hasRemoteSync(doc)) {
+              doc.status = 'local'
+              sanitized = true
+            }
+          }
+          if (sanitized) {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed))
+          }
+        }
+        return parsed
       } catch (e) {
         console.error('Error parsing stored research data:', e)
       }
     }
     this._saveData(INITIAL_RESEARCH_DATA)
     return JSON.parse(JSON.stringify(INITIAL_RESEARCH_DATA))
+  }
+
+  /**
+   * Retorna true se o documento possui vínculo remoto confirmado na nuvem.
+   */
+  hasRemoteSync(doc) {
+    return Boolean(doc && (doc.externalViewerUrl || doc.googleDriveFileId || doc.syncedAt))
+  }
+
+  /**
+   * Retorna o estado real do documento: 'syncing' | 'synced' | 'local'.
+   */
+  getDocumentSyncState(doc, syncingIds = null) {
+    if (!doc) return 'local'
+    if ((syncingIds && syncingIds.has?.(doc.id)) || doc.status === 'syncing') {
+      return 'syncing'
+    }
+    if (this.hasRemoteSync(doc)) {
+      return 'synced'
+    }
+    return 'local'
+  }
+
+  /**
+   * Mapeia o estado real do documento para os status aceitos pelo <fzl-file-manager>:
+   * - 'local' -> 'bookmarked-only' (Favorito Local)
+   * - 'syncing' -> 'pending-upload' (Pendente Upload / Sincronizando)
+   * - 'synced' -> 'synced' (Sincronizado)
+   */
+  getFileManagerStatus(doc, syncingIds = null) {
+    const state = this.getDocumentSyncState(doc, syncingIds)
+    if (state === 'syncing') return 'pending-upload'
+    if (state === 'synced') return 'synced'
+    return 'bookmarked-only'
+  }
+
+  /**
+   * Retorna true quando há sessão autenticada ou token OAuth manual configurado.
+   */
+  isCloudAuthenticated(user) {
+    const cfg = this.getCloudSyncConfig()
+    return Boolean(user || cfg.googleAuthToken || cfg.oneDriveAuthToken)
+  }
+
+  /**
+   * Retorna o provedor efetivo: enquanto não estiver autenticado nem possuir token manual,
+   * força 'local' para que a UI não indique persistência em nuvem inexistente.
+   */
+  getEffectivePersistenceProvider(user) {
+    const cfg = this.getCloudSyncConfig()
+    if (!this.isCloudAuthenticated(user)) {
+      return 'local'
+    }
+    return cfg.provider || 'local'
   }
 
   _saveData(data) {
@@ -141,6 +208,17 @@ class ResearchStorageService {
 
     if (targetProvider && targetProvider !== cfg.provider) {
       return this.saveCloudSyncConfig({ provider: targetProvider })
+    }
+    return cfg
+  }
+
+  /**
+   * Reverte a persistência para 'local' quando não houver usuário autenticado nem token OAuth manual.
+   */
+  resetProviderWhenUnauthenticated(user) {
+    const cfg = this.getCloudSyncConfig()
+    if (!this.isCloudAuthenticated(user) && cfg.provider !== 'local') {
+      return this.saveCloudSyncConfig({ provider: 'local' })
     }
     return cfg
   }

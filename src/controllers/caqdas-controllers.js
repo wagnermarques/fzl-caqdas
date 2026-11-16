@@ -214,36 +214,43 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
   } = {}) {
     const cloudCfg = this._syncInternalAuthConfig()
     const homeDirName = researchStorage.getHomeDirName()
-    const rawProvider = cloudCfg.provider || 'google-drive'
+    const user = this.currentUser
+    const isAuthenticated = researchStorage.isCloudAuthenticated(user)
+    const rawProvider = isAuthenticated ? (cloudCfg.provider || 'local') : 'local'
     const effectiveProvider = rawProvider === 'local' ? 'rest' : rawProvider
+    const allowCloudUpload = isAuthenticated && (rawProvider === 'google-drive' || rawProvider === 'onedrive')
 
-    const googleTokenProvider = async () => {
-      const token = await this.resolveCloudAccessToken('google-drive')
-      if (token && !researchStorage.getCloudSyncConfig().googleDriveFolderId) {
-        const folderId = await this.ensureCloudHomeFolderId('google-drive', token)
-        if (folderId) {
-          if (fileManager) fileManager.googleDriveFolderId = folderId
-          if (documentPicker) documentPicker.googleDriveFolderId = folderId
+    const googleTokenProvider = allowCloudUpload
+      ? async () => {
+          const token = await this.resolveCloudAccessToken('google-drive')
+          if (token && !researchStorage.getCloudSyncConfig().googleDriveFolderId) {
+            const folderId = await this.ensureCloudHomeFolderId('google-drive', token)
+            if (folderId) {
+              if (fileManager) fileManager.googleDriveFolderId = folderId
+              if (documentPicker) documentPicker.googleDriveFolderId = folderId
+            }
+          }
+          return token
         }
-      }
-      return token
-    }
+      : undefined
 
-    const oneDriveTokenProvider = async () => {
-      const token = await this.resolveCloudAccessToken('onedrive')
-      if (token && !researchStorage.getCloudSyncConfig().oneDriveFolderId) {
-        const folderId = await this.ensureCloudHomeFolderId('onedrive', token)
-        if (folderId) {
-          if (fileManager) fileManager.oneDriveFolderId = folderId
-          if (documentPicker) documentPicker.oneDriveFolderId = folderId
+    const oneDriveTokenProvider = allowCloudUpload
+      ? async () => {
+          const token = await this.resolveCloudAccessToken('onedrive')
+          if (token && !researchStorage.getCloudSyncConfig().oneDriveFolderId) {
+            const folderId = await this.ensureCloudHomeFolderId('onedrive', token)
+            if (folderId) {
+              if (fileManager) fileManager.oneDriveFolderId = folderId
+              if (documentPicker) documentPicker.oneDriveFolderId = folderId
+            }
+          }
+          return token
         }
-      }
-      return token
-    }
+      : undefined
 
     for (const el of [fileManager, documentPicker]) {
       if (!el) continue
-      if (typeof el.bindSocialAuth === 'function' && cloudCfg.autoConfigureByAuthProvider !== false && (rawProvider === 'google-drive' || rawProvider === 'onedrive')) {
+      if (typeof el.bindSocialAuth === 'function' && allowCloudUpload && cloudCfg.autoConfigureByAuthProvider !== false) {
         el.bindSocialAuth(this.authController, {
           convertToGoogleDocs: Boolean(cloudCfg.googleDriveConvertToDocs),
           googleDriveFolderId: cloudCfg.googleDriveFolderId || undefined,
@@ -254,27 +261,39 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
       }
 
       el.storageProvider = effectiveProvider
-      el.googleDriveFolderId = cloudCfg.googleDriveFolderId || ''
-      el.oneDriveFolderId = cloudCfg.oneDriveFolderId || ''
-      el.googleDriveConvertToDocs = Boolean(cloudCfg.googleDriveConvertToDocs)
-      el.googleAuthToken = cloudCfg.googleAuthToken || ''
-      el.oneDriveAuthToken = cloudCfg.oneDriveAuthToken || ''
+      el.googleDriveFolderId = allowCloudUpload ? (cloudCfg.googleDriveFolderId || '') : ''
+      el.oneDriveFolderId = allowCloudUpload ? (cloudCfg.oneDriveFolderId || '') : ''
+      el.googleDriveConvertToDocs = allowCloudUpload && Boolean(cloudCfg.googleDriveConvertToDocs)
+      el.googleAuthToken = allowCloudUpload ? (cloudCfg.googleAuthToken || '') : ''
+      el.oneDriveAuthToken = allowCloudUpload ? (cloudCfg.oneDriveAuthToken || '') : ''
       el.googleTokenProvider = googleTokenProvider
       el.oneDriveTokenProvider = oneDriveTokenProvider
       if (el.dataset) {
         el.dataset.storageProvider = rawProvider
         el.dataset.homeDir = homeDirName
+        el.dataset.cloudAuthenticated = String(isAuthenticated)
       }
     }
 
-    if (fileManager && (!fileManager.currentFolder || fileManager.currentFolder === '/')) {
-      fileManager.currentFolder = `/${homeDirName}`
+    if (fileManager) {
+      if (!fileManager.currentFolder || fileManager.currentFolder === '/') {
+        fileManager.currentFolder = `/${homeDirName}`
+      }
+      fileManager.uploadHandler = allowCloudUpload
+        ? undefined
+        : async () => {
+            const msg = !isAuthenticated
+              ? 'Você não está conectado. Faça login com Google ou Microsoft para enviar arquivos à nuvem.'
+              : 'O destino está em Armazenamento Local. Selecione Google Drive ou OneDrive para sincronizar na nuvem.'
+            throw new Error(msg)
+          }
     }
 
     for (const el of [cameraCapture, chapterViewGroup, ...(chapterViews || [])]) {
       if (!el?.dataset) continue
       el.dataset.storageProvider = rawProvider
       el.dataset.homeDir = homeDirName
+      el.dataset.cloudAuthenticated = String(isAuthenticated)
     }
   }
 
