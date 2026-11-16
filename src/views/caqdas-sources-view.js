@@ -1,15 +1,13 @@
 import { LitElement, html, css } from 'lit'
-import { researchStorage, DEFAULT_HOME_DIR } from '../services/storage-service.js'
+import { researchStorage, getPersistenceProviderLabel } from '../services/storage-service.js'
 import { authService } from 'fzl-fund-appshell--lit'
 import { CaqdasPersonalCloudDocsController } from '../controllers/caqdas-controllers.js'
 import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
 import '@material/web/icon/icon.js'
 import '@material/web/textfield/outlined-text-field.js'
-import '@material/web/checkbox/checkbox.js'
 import '@fzl/webcomponents-lit/file-manager'
 import '@fzl/webcomponents-lit/document-picker'
-import '@fzl/webcomponents-lit/social-login'
 import '@fzl/webcomponents-lit/camera-capture'
 import '@fzl/webcomponents-lit/reader-chapterview'
 
@@ -97,42 +95,6 @@ export class CaqdasSourcesView extends LitElement {
       object-fit: cover;
     }
 
-    .persistence-selectors {
-      display: flex;
-      flex-direction: column;
-      gap: 10px;
-      background: #f8fafc;
-      border: 1px solid #d8e5e4;
-      border-radius: 12px;
-      padding: 12px 16px;
-      margin-bottom: 18px;
-    }
-
-    .selector-group {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-
-    .selector-label {
-      font-size: 0.82rem;
-      font-weight: 600;
-      color: #004d40;
-      min-width: 145px;
-    }
-
-    .select-control {
-      width: 100%;
-      padding: 12px 14px;
-      border-radius: 6px;
-      border: 1px solid #79747e;
-      background: #ffffff;
-      font-size: 0.95rem;
-      font-family: inherit;
-      color: inherit;
-    }
-
     .capture-status {
       margin-top: 12px;
       padding: 10px 14px;
@@ -218,76 +180,6 @@ export class CaqdasSourcesView extends LitElement {
       padding-top: 14px;
       border-top: 1px solid #e0e0e0;
     }
-
-    .cloud-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
-      gap: 20px;
-      margin-top: 16px;
-    }
-
-    .cloud-card {
-      background: #ffffff;
-      border: 1px solid #d0e0df;
-      border-radius: 12px;
-      padding: 18px;
-    }
-
-    .cloud-card h3 {
-      margin: 0 0 10px 0;
-      color: #006a6a;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      font-size: 1.1rem;
-    }
-
-    .switch-label {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      margin: 12px 0;
-      cursor: pointer;
-      font-size: 0.92rem;
-      user-select: none;
-    }
-
-    .doc-link-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 12px;
-      font-size: 0.88rem;
-    }
-
-    .doc-link-table th,
-    .doc-link-table td {
-      border: 1px solid #e2e8f0;
-      padding: 8px 12px;
-      text-align: left;
-    }
-
-    .doc-link-table th {
-      background: #f1f5f9;
-      font-weight: 600;
-    }
-
-    .btn-external-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      background: #e0f2fe;
-      color: #0284c7;
-      padding: 4px 10px;
-      border-radius: 6px;
-      text-decoration: none;
-      font-weight: 600;
-      font-size: 0.8rem;
-      border: 1px solid #bae6fd;
-    }
-
-    .btn-external-link:hover {
-      background: #bae6fd;
-    }
   `
 
   static properties = {
@@ -303,7 +195,6 @@ export class CaqdasSourcesView extends LitElement {
     newFolder: { state: true },
     newContent: { state: true },
     selectedDocForReading: { state: true },
-    _syncingDocId: { state: true },
     _syncingDocIds: { state: true }
   }
 
@@ -316,7 +207,6 @@ export class CaqdasSourcesView extends LitElement {
     this.cloudController = new CaqdasPersonalCloudDocsController(this)
     this.currentFolder = `/${researchStorage.getHomeDirName()}`
     this.captureStatus = ''
-    this._syncingDocId = null
     this._syncingDocIds = new Set()
     this.newTitle = ''
     this.newParticipant = ''
@@ -363,41 +253,8 @@ export class CaqdasSourcesView extends LitElement {
     if (active) next.add(docId)
     else next.delete(docId)
     this._syncingDocIds = next
-    this._syncingDocId = active ? docId : null
     this.requestUpdate()
     this.updateComplete.then(() => this._refreshFileManager())
-  }
-
-  async _syncDocViaController(doc) {
-    if (!researchStorage.isCloudAuthenticated(this.currentUser)) {
-      alert('Faça login com Google ou Microsoft para sincronizar documentos na nuvem.')
-      return
-    }
-    if (this._syncingDocIds.has(doc.id)) return
-    this._setDocSyncing(doc.id, true)
-
-    try {
-      const activeProvider = researchStorage.getEffectivePersistenceProvider(this.currentUser)
-      const result = await this.cloudController.syncCorpusDocument(doc, {
-        convertToGoogleDocs: this.cloudConfig.googleDriveConvertToDocs,
-        folderId:
-          activeProvider === 'onedrive'
-            ? this.cloudConfig.oneDriveFolderId
-            : this.cloudConfig.googleDriveFolderId
-      })
-
-      if (result.success) {
-        this._loadDocs()
-        const targetLabel = activeProvider === 'onedrive' ? 'OneDrive' : 'Google Docs'
-        alert(`✔ Documento "${doc.title}" sincronizado com sucesso no ${targetLabel}!`)
-      } else {
-        alert(`Não foi possível sincronizar na nuvem: ${result.error || 'Erro desconhecido'}`)
-      }
-    } catch (err) {
-      alert(`Erro ao sincronizar: ${err.message}`)
-    } finally {
-      this._setDocSyncing(doc.id, false)
-    }
   }
 
   connectedCallback() {
@@ -573,7 +430,7 @@ export class CaqdasSourcesView extends LitElement {
     if (this.cloudConfig.autoSyncToCloud && isCloudProvider) {
       this._setDocSyncing(savedDoc.id, true)
       researchStorage.updateDocument(savedDoc.id, { status: 'syncing' })
-      this.captureStatus = `🔄 Sincronizando "${title}" em ${this._getProviderLabel(activeProvider)}...`
+      this.captureStatus = `🔄 Sincronizando "${title}" em ${getPersistenceProviderLabel(activeProvider)}...`
 
       try {
         const result = await this.cloudController.uploadToPersonalCloud(file, {
@@ -626,7 +483,7 @@ export class CaqdasSourcesView extends LitElement {
       file,
       title,
       mediaType: 'image',
-      content: `Registro fotográfico de campo capturado via fzl-camera-capture (${photo.width || '?'}x${photo.height || '?'}, câmera: ${photo.facingMode || 'environment'}).\nPasta de persistência: /${homeDir}/capturas-camera\nPersistência efetiva no momento: ${this._getProviderLabel(effectiveProvider)}`
+      content: `Registro fotográfico de campo capturado via fzl-camera-capture (${photo.width || '?'}x${photo.height || '?'}, câmera: ${photo.facingMode || 'environment'}).\nPasta de persistência: /${homeDir}/capturas-camera\nPersistência efetiva no momento: ${getPersistenceProviderLabel(effectiveProvider)}`
     })
   }
 
@@ -645,7 +502,7 @@ export class CaqdasSourcesView extends LitElement {
       file,
       title,
       mediaType: 'video',
-      content: `Registro em vídeo de campo capturado via fzl-camera-capture (duração: ${video.durationSeconds || 0}s, formato: ${mime}).\nPasta de persistência: /${homeDir}/capturas-camera\nPersistência efetiva no momento: ${this._getProviderLabel(effectiveProvider)}`
+      content: `Registro em vídeo de campo capturado via fzl-camera-capture (duração: ${video.durationSeconds || 0}s, formato: ${mime}).\nPasta de persistência: /${homeDir}/capturas-camera\nPersistência efetiva no momento: ${getPersistenceProviderLabel(effectiveProvider)}`
     })
   }
 
@@ -744,82 +601,6 @@ export class CaqdasSourcesView extends LitElement {
     alert('Documento cadastrado localmente com sucesso!')
   }
 
-  async _handleSocialLoginSuccess(e) {
-    const { provider, user, credential, accessToken } = e.detail
-    await authService.signInWithSocial({ provider, user, credential, accessToken })
-    researchStorage.syncProviderFromAuthUser({ ...user, provider })
-    alert(`✔ Autenticado com sucesso via ${provider.toUpperCase()}: ${user.name} (${user.email})`)
-  }
-
-  _handleSocialLoginError(e) {
-    alert(`Erro na autenticação social: ${e.detail?.error || 'Tente novamente.'}`)
-  }
-
-  _handleSignOut() {
-    authService.signOut()
-    researchStorage.resetProviderWhenUnauthenticated(null)
-    alert('Sessão encerrada.')
-  }
-
-  _updateCloudConfig(patch) {
-    this.cloudConfig = researchStorage.saveCloudSyncConfig(patch)
-    // Sincroniza dinamicamente a configuração nativa de socialAuth do AppShell
-    if (typeof authService.configureSocialAuth === 'function') {
-      const currentSocial = authService.getSocialAuthConfig?.() || {}
-      authService.configureSocialAuth({
-        ...currentSocial,
-        ...(patch.googleClientId !== undefined ? { googleClientId: patch.googleClientId } : {}),
-        ...(patch.microsoftClientId !== undefined ? { microsoftClientId: patch.microsoftClientId } : {}),
-        ...(patch.microsoftTenantId !== undefined ? { microsoftTenantId: patch.microsoftTenantId } : {}),
-      })
-    }
-    this._bindControllers()
-    this._refreshFileManager()
-    this.requestUpdate()
-  }
-
-  _getProviderLabel(provider) {
-    switch (provider) {
-      case 'google-drive':
-        return 'Google Drive & Docs'
-      case 'onedrive':
-        return 'Microsoft OneDrive'
-      case 'local':
-        return 'Armazenamento Local (Navegador)'
-      case 'rest':
-        return 'Servidor REST Customizado'
-      default:
-        return provider || 'Armazenamento Local (Navegador)'
-    }
-  }
-
-  _simulateDocsSyncForSample() {
-    if (!researchStorage.isCloudAuthenticated(this.currentUser)) {
-      alert('Faça login com Google ou Microsoft antes de simular a sincronização na nuvem.')
-      return
-    }
-    const docxDocs = this.documents.filter((d) => d.extension === '.docx' || d.type === 'docx')
-    if (docxDocs.length === 0) {
-      alert('Nenhum documento .docx encontrado no corpus para sincronizar.')
-      return
-    }
-
-    const nowIso = new Date().toISOString()
-    for (const d of docxDocs) {
-      const mockId = `1docs_${d.id}_${Date.now()}`
-      researchStorage.updateDocument(d.id, {
-        status: 'synced',
-        storageProvider: 'google-drive',
-        externalViewerUrl: `https://docs.google.com/document/d/${mockId}/edit`,
-        externalViewerLabel: 'Abrir no Google Docs ↗',
-        googleDriveFileId: mockId,
-        syncedAt: nowIso
-      })
-    }
-    this._loadDocs()
-    alert(`✔ ${docxDocs.length} documento(s) Word sincronizado(s) com links de edição no Google Docs!`)
-  }
-
   render() {
     const homeDirName = researchStorage.getHomeDirName()
     const isAuthenticated = researchStorage.isCloudAuthenticated(this.currentUser)
@@ -828,9 +609,6 @@ export class CaqdasSourcesView extends LitElement {
     const allowCloudUpload = isAuthenticated && (rawProvider === 'google-drive' || rawProvider === 'onedrive')
     const anySyncing = this._syncingDocIds.size > 0
     const activeFolder = this.currentFolder || `/${homeDirName}`
-    const socialAuthCfg = authService.getSocialAuthConfig?.() || {}
-    const effectiveGoogleClientId = this.cloudConfig.googleClientId || socialAuthCfg.googleClientId || ''
-    const effectiveMicrosoftClientId = this.cloudConfig.microsoftClientId || socialAuthCfg.microsoftClientId || ''
     const isGoogle =
       this.currentUser?.provider === 'google' ||
       this.currentUser?.email?.includes('gmail') ||
@@ -839,20 +617,6 @@ export class CaqdasSourcesView extends LitElement {
       this.currentUser?.provider === 'microsoft' ||
       /@(outlook|hotmail|live|msn)\./i.test(this.currentUser?.email || '')
 
-    const providerItems = [
-      { id: 'google-drive', value: 'google-drive', label: 'Google Drive (GDrive)', color: '#0284c7', disabled: !isAuthenticated },
-      { id: 'onedrive', value: 'onedrive', label: 'Microsoft OneDrive', color: '#0369a1', disabled: !isAuthenticated },
-      { id: 'local', value: 'local', label: 'Armazenamento Local', color: '#006a6a', disabled: !isAuthenticated },
-      { id: 'rest', value: 'rest', label: 'REST Customizado', color: '#475569', disabled: !isAuthenticated }
-    ]
-
-    const folderItems = [
-      { id: 'root', value: `/${homeDirName}`, label: `📁 /${homeDirName}` },
-      { id: 'entrevistas', value: `/${homeDirName}/entrevistas`, label: `🎙️ /${homeDirName}/entrevistas` },
-      { id: 'documentos', value: `/${homeDirName}/documentos`, label: `📄 /${homeDirName}/documentos` },
-      { id: 'camera', value: `/${homeDirName}/capturas-camera`, label: `📷 /${homeDirName}/capturas-camera` }
-    ]
-
     return html`
       <div class="header-box">
         <div class="header-row">
@@ -860,10 +624,10 @@ export class CaqdasSourcesView extends LitElement {
             <h1>Corpus de Pesquisa &amp; Gerenciador de Documentos</h1>
             <p style="margin: 6px 0 0 0; color: var(--md-sys-color-on-surface-variant, #49454f);">
               ${isAuthenticated
-                ? html`Colete entrevistas, documentos Word (.docx), PDFs e capturas de campo na pasta inicial
-                    <code>/${homeDirName}</code> com destino configurável (<strong>${this._getProviderLabel(rawProvider)}</strong>).`
+                ? html`Colete entrevistas, documentos Word (.docx), PDFs e capturas de campo em
+                    <code>/${homeDirName}</code> (<strong>${getPersistenceProviderLabel(rawProvider)}</strong>).`
                 : html`Colete e organize entrevistas, documentos Word (.docx), PDFs e capturas de campo localmente em
-                    <code>/${homeDirName}</code>. Faça login com Google ou Microsoft para habilitar a sincronização em nuvem.`}
+                    <code>/${homeDirName}</code>.`}
             </p>
           </div>
 
@@ -879,7 +643,7 @@ export class CaqdasSourcesView extends LitElement {
         </div>
       </div>
 
-      <!-- Cloud & Auth Status Banner -->
+      <!-- Compact Auth & Storage Summary -->
       <div class="cloud-status-banner">
         <div class="cloud-status-left">
           ${this.currentUser
@@ -901,31 +665,6 @@ export class CaqdasSourcesView extends LitElement {
                 </span>
               `}
 
-          ${isAuthenticated
-            ? html`
-                <span>
-                  ${anySyncing ? '🔄 Sincronizando...' : '☁️ Persistência ativa:'}
-                  <strong>${this._getProviderLabel(rawProvider)}</strong>
-                  | Pasta Inicial: <code>/${homeDirName}</code>
-                  ${rawProvider === 'google-drive' && this.cloudConfig.googleDriveFolderId
-                    ? html`| Folder ID: <code>${this.cloudConfig.googleDriveFolderId}</code>`
-                    : rawProvider === 'onedrive' && this.cloudConfig.oneDriveFolderId
-                      ? html`| OneDrive ID: <code>${this.cloudConfig.oneDriveFolderId}</code>`
-                      : ''}
-                  ${rawProvider === 'google-drive' && this.cloudConfig.googleDriveConvertToDocs
-                    ? html`| <span style="color: #006a6a; font-weight: 500;">✓ Conversão DOCX → Google Docs Ativa</span>`
-                    : ''}
-                </span>
-              `
-            : html`
-                <span style="color: #475569;">
-                  💾 <strong>Armazenamento Local (Offline / Navegador)</strong> | Pasta: <code>/${homeDirName}</code>
-                  · <em>Sem sincronização em nuvem enquanto desconectado</em>
-                </span>
-              `}
-        </div>
-
-        <div style="display: flex; gap: 8px; align-items: center; flex-wrap: wrap;">
           <fzl-reader-chapterview
             variant="pill"
             color=${!isAuthenticated ? '#475569' : anySyncing ? '#d97706' : '#006a6a'}
@@ -934,66 +673,17 @@ export class CaqdasSourcesView extends LitElement {
               ? `💾 Local · /${homeDirName}`
               : anySyncing
                 ? `🔄 Sincronizando · /${homeDirName}`
-                : `${rawProvider === 'local' ? '💾' : '☁️'} ${this._getProviderLabel(rawProvider)} · /${homeDirName}`}
+                : `${rawProvider === 'local' ? '💾' : '☁️'} ${getPersistenceProviderLabel(rawProvider)} · /${homeDirName}`}
             @fzl-click=${() => {
-              this.activeTab = 'cloud'
+              window.location.hash = '#/config/persistencia'
             }}
           ></fzl-reader-chapterview>
-
-          <button
-            class="tab-btn"
-            style="padding: 6px 12px; font-size: 0.85rem;"
-            @click=${() => {
-              this.activeTab = 'cloud'
-            }}
-          >
-            <md-icon style="font-size: 18px;">settings</md-icon>
-            Configurar Persistência &amp; Login
-          </button>
-        </div>
-      </div>
-
-      <!-- Barra de seleção rápida com <fzl-reader-chapterview-group> e <fzl-reader-chapterview> -->
-      <div class="persistence-selectors">
-        <div class="selector-group">
-          <span class="selector-label">Destino de Persistência:</span>
-          <fzl-reader-chapterview-group
-            aria-label="Selecionar provedor de persistência"
-            selection-mode="single"
-            .items=${providerItems}
-            .selected=${isAuthenticated ? rawProvider : ''}
-            @fzl-change=${(e) => {
-              if (!isAuthenticated) return
-              const selected = e.detail?.selected
-              if (selected) {
-                this._updateCloudConfig({ provider: selected })
-              }
-            }}
-          ></fzl-reader-chapterview-group>
-          ${!isAuthenticated
-            ? html`<span style="font-size: 0.78rem; color: #64748b;">
-                🔒 Desabilitado até você fazer login (<a href="#/conta/entrar" style="color: #0284c7;">Entrar</a>)
-              </span>`
-            : ''}
         </div>
 
-        <div class="selector-group">
-          <span class="selector-label">Pasta em /${homeDirName}:</span>
-          <fzl-reader-chapterview-group
-            aria-label="Selecionar pasta inicial ativa"
-            selection-mode="single"
-            .items=${folderItems}
-            .selected=${activeFolder}
-            @fzl-change=${(e) => {
-              const folder = e.detail?.selected || `/${homeDirName}`
-              this.currentFolder = folder
-              const managerEl = this.shadowRoot?.querySelector('fzl-file-manager')
-              if (managerEl && typeof managerEl.navigateToFolder === 'function') {
-                managerEl.navigateToFolder(folder)
-              }
-            }}
-          ></fzl-reader-chapterview-group>
-        </div>
+        <md-outlined-button href="#/config/persistencia">
+          <md-icon slot="icon">tune</md-icon>
+          Configurar Persistência &amp; Nuvem
+        </md-outlined-button>
       </div>
 
       <div class="tabs-bar">
@@ -1028,16 +718,6 @@ export class CaqdasSourcesView extends LitElement {
         </button>
 
         <button
-          class="tab-btn ${this.activeTab === 'cloud' ? 'active' : ''}"
-          @click=${() => {
-            this.activeTab = 'cloud'
-          }}
-        >
-          <md-icon>cloud_sync</md-icon>
-          Persistência &amp; Nuvem (GDrive / OneDrive)
-        </button>
-
-        <button
           class="tab-btn ${this.activeTab === 'manual' ? 'active' : ''}"
           @click=${() => {
             this.activeTab = 'manual'
@@ -1055,7 +735,7 @@ export class CaqdasSourcesView extends LitElement {
                 📂 <strong>Explorador de Arquivos &amp; Leitor Integrado:</strong>
                 ${isAuthenticated
                   ? html`Operando em <code>${activeFolder}</code> com persistência configurada para
-                      <strong>${this._getProviderLabel(rawProvider)}</strong>.`
+                      <strong>${getPersistenceProviderLabel(rawProvider)}</strong>.`
                   : html`Operando em modo <strong>Local (Navegador)</strong> na pasta <code>${activeFolder}</code>. Os documentos mostrados aqui são apenas locais enquanto você não estiver conectado.`}
                 Alterne entre visualização em <strong>Tabela</strong> e <strong>Grade</strong>, navegue pelas pastas sob
                 <code>/${homeDirName}</code> e clique em <strong>Continuar Leitura</strong>.
@@ -1106,7 +786,7 @@ export class CaqdasSourcesView extends LitElement {
               <div class="info-alert">
                 📥 <strong>Upload &amp; Importação de Documentos:</strong>
                 ${isAuthenticated && rawProvider !== 'local'
-                  ? html`Destino ativo: <strong>${this._getProviderLabel(rawProvider)}</strong> na pasta inicial
+                  ? html`Destino ativo: <strong>${getPersistenceProviderLabel(rawProvider)}</strong> na pasta inicial
                       <code>/${homeDirName}</code>.`
                   : html`Modo <strong>Local</strong> ativo na pasta <code>/${homeDirName}</code> — os documentos importados ficam salvos apenas localmente neste navegador (sem envio para a nuvem).`}
                 Arraste e solte arquivos em Word (<code>.docx</code>), PDF, Markdown, TXT ou CSV/JSON.
@@ -1141,9 +821,9 @@ export class CaqdasSourcesView extends LitElement {
                 📷 <strong>Captura de Campo Integrada (<code>&lt;fzl-camera-capture&gt;</code>):</strong>
                 ${allowCloudUpload && this.cloudConfig.autoSyncToCloud
                   ? html`Fotos de documentos e vídeos de observação são registrados em <code>/${homeDirName}/capturas-camera</code>
-                      e sincronizados automaticamente com <strong>${this._getProviderLabel(rawProvider)}</strong>.`
+                      e sincronizados automaticamente com <strong>${getPersistenceProviderLabel(rawProvider)}</strong>.`
                   : html`Fotos de documentos e vídeos de observação são registrados <strong>apenas localmente</strong> em
-                      <code>/${homeDirName}/capturas-camera</code>. Conecte uma conta Google ou Microsoft para ativar o envio à nuvem.`}
+                      <code>/${homeDirName}/capturas-camera</code>. <a href="#/config/persistencia" style="color: #0284c7; font-weight: 600;">Configurar sincronização em nuvem</a>.`}
               </div>
 
               <fzl-camera-capture
@@ -1156,400 +836,6 @@ export class CaqdasSourcesView extends LitElement {
               ${this.captureStatus
                 ? html`<div class="capture-status">${this.captureStatus}</div>`
                 : ''}
-            </div>
-          `
-        : ''}
-
-      ${this.activeTab === 'cloud'
-        ? html`
-            <div class="card">
-              <h2 style="margin-top: 0; color: #006a6a; display: flex; align-items: center; gap: 8px;">
-                <md-icon>cloud_sync</md-icon>
-                Persistência de Arquivos &amp; Sincronização (Google Drive / OneDrive)
-              </h2>
-              <p style="color: #4b5563; font-size: 0.95rem; line-height: 1.5;">
-                Ao autenticar com sua conta <strong>Google</strong> ou <strong>Microsoft</strong>, as opções de destino de
-                persistência são habilitadas e configuradas automaticamente para o provedor correspondente usando a pasta inicial
-                (padrão: <code>${DEFAULT_HOME_DIR}</code>). Enquanto estiver desconectado, todas as opções de nuvem ficam bloqueadas e o app salva apenas localmente.
-              </p>
-
-              <div class="cloud-grid">
-                <!-- Card 1: Autenticação Social -->
-                <div class="cloud-card">
-                  <h3>
-                    <md-icon>badge</md-icon>
-                    Autenticação &amp; Identidade
-                  </h3>
-
-                  ${this.currentUser
-                    ? html`
-                        <div style="display: flex; align-items: center; gap: 12px; margin: 16px 0; padding: 12px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-                          ${this.currentUser.avatarUrl
-                            ? html`<img style="width: 44px; height: 44px; border-radius: 50%; object-fit: cover;" src=${this.currentUser.avatarUrl} alt="" />`
-                            : html`<md-icon style="font-size: 40px; color: #006a6a;">account_circle</md-icon>`}
-                          <div>
-                            <div style="font-weight: 600; font-size: 1rem;">${this.currentUser.name}</div>
-                            <div style="font-size: 0.85rem; color: #64748b;">${this.currentUser.email}</div>
-                          </div>
-                        </div>
-
-                        <div style="display: flex; gap: 8px;">
-                          <md-outlined-button @click=${this._handleSignOut}>
-                            <md-icon slot="icon">logout</md-icon>
-                            Desconectar
-                          </md-outlined-button>
-                          <md-text-button href="#/conta">Ver Minha Conta</md-text-button>
-                        </div>
-                      `
-                    : html`
-                        <div style="margin-bottom: 12px; font-size: 0.84rem;">
-                          ${effectiveGoogleClientId
-                            ? html`<span style="color: #166534; background: #dcfce7; padding: 2px 8px; border-radius: 4px; font-weight: 500;">
-                                🟢 Google OAuth Ativo (Login Real)
-                              </span>`
-                            : html`<span style="color: #92400e; background: #fef3c7; padding: 2px 8px; border-radius: 4px; font-weight: 500;">
-                                ⚠️ Google Client ID não informado (insira abaixo para autenticar)
-                              </span>`}
-                        </div>
-                        <p style="font-size: 0.88rem; color: #64748b; margin-bottom: 14px;">
-                          Faça login com sua conta real do Google ou Microsoft para habilitar e configurar a persistência na nuvem:
-                        </p>
-                        <fzl-social-login
-                          layout="buttons"
-                          show-divider="false"
-                          google-client-id=${effectiveGoogleClientId}
-                          microsoft-client-id=${effectiveMicrosoftClientId}
-                          microsoft-tenant-id=${this.cloudConfig.microsoftTenantId || 'common'}
-                          .requestDriveScope=${socialAuthCfg.requestDriveScope === true}
-                          @fzl-social-login-success=${this._handleSocialLoginSuccess}
-                          @fzl-social-login-error=${this._handleSocialLoginError}
-                        ></fzl-social-login>
-                      `}
-                </div>
-
-                <!-- Card 2: Destino de Persistência & Pasta Inicial -->
-                <div class="cloud-card">
-                  <h3>
-                    <md-icon>hard_drive</md-icon>
-                    Destino de Persistência &amp; Pasta Inicial
-                  </h3>
-
-                  <div class="form-group">
-                    <label style="display: block; font-size: 0.82rem; font-weight: 600; color: #334155; margin-bottom: 6px;">
-                      Onde persistir arquivos e capturas:
-                    </label>
-                    <select
-                      class="select-control"
-                      ?disabled=${!isAuthenticated}
-                      .value=${rawProvider}
-                      @change=${(e) => {
-                        this._updateCloudConfig({ provider: e.target.value })
-                      }}
-                    >
-                      <option value="google-drive">Google Drive &amp; Google Docs</option>
-                      <option value="onedrive">Microsoft OneDrive</option>
-                      <option value="local">Armazenamento Local (Navegador / Offline)</option>
-                      <option value="rest">Backend REST Customizado</option>
-                    </select>
-                    ${!isAuthenticated
-                      ? html`<div style="font-size: 0.78rem; color: #64748b; margin-top: 6px;">
-                          🔒 Faça login com uma conta padrão ou com suas credenciais OAuth para habilitar a seleção do destino de persistência.
-                        </div>`
-                      : ''}
-                  </div>
-
-                  <label class="switch-label">
-                    <input
-                      type="checkbox"
-                      style="width: 18px; height: 18px; cursor: pointer;"
-                      .checked=${this.cloudConfig.autoConfigureByAuthProvider !== false}
-                      @change=${(e) => {
-                        this._updateCloudConfig({ autoConfigureByAuthProvider: e.target.checked })
-                      }}
-                    />
-                    <span>
-                      <strong>Configurar automaticamente para Google Drive ou OneDrive ao fazer login com Google ou Microsoft</strong>
-                      <div style="font-size: 0.78rem; color: #64748b;">
-                        Ajusta automaticamente todos os componentes conforme o provedor da conta autenticada.
-                      </div>
-                    </span>
-                  </label>
-
-                  <div class="form-group" style="margin-top: 12px;">
-                    <md-outlined-text-field
-                      label="Nome da Pasta Inicial de Persistência (Home Dir)"
-                      supporting-text="Padrão: ${DEFAULT_HOME_DIR} — usada como raiz dos documentos na nuvem e no gerenciador"
-                      style="width: 100%;"
-                      .value=${this.cloudConfig.homeDirName ?? DEFAULT_HOME_DIR}
-                      @input=${(e) => {
-                        this._updateCloudConfig({ homeDirName: e.target.value })
-                      }}
-                    ></md-outlined-text-field>
-                  </div>
-
-                  <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                    <md-outlined-button
-                      @click=${() => {
-                        this._updateCloudConfig({
-                          homeDirName: DEFAULT_HOME_DIR,
-                          googleDriveFolderId: '',
-                          oneDriveFolderId: ''
-                        })
-                      }}
-                    >
-                      Restaurar ${DEFAULT_HOME_DIR}
-                    </md-outlined-button>
-                  </div>
-                </div>
-
-                <!-- Card 3: Credenciais OAuth para Login Real -->
-                <div class="cloud-card">
-                  <h3>
-                    <md-icon>key</md-icon>
-                    Credenciais OAuth (Login Real)
-                  </h3>
-
-                  <p style="font-size: 0.82rem; color: #64748b; margin-top: 0;">
-                    Cole aqui seus Client IDs públicos caso queira sobrescrever a configuração padrão do AppShell:
-                  </p>
-
-                  <div class="form-group">
-                    <md-outlined-text-field
-                      label="Google Cloud Client ID"
-                      supporting-text="Ex: 123456789-abc.apps.googleusercontent.com"
-                      style="width: 100%;"
-                      .value=${this.cloudConfig.googleClientId || ''}
-                      @input=${(e) => {
-                        this._updateCloudConfig({ googleClientId: e.target.value.trim() })
-                      }}
-                    ></md-outlined-text-field>
-                  </div>
-
-                  <div class="form-group">
-                    <md-outlined-text-field
-                      label="Microsoft Azure Client ID"
-                      supporting-text="Ex: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
-                      style="width: 100%;"
-                      .value=${this.cloudConfig.microsoftClientId || ''}
-                      @input=${(e) => {
-                        this._updateCloudConfig({ microsoftClientId: e.target.value.trim() })
-                      }}
-                    ></md-outlined-text-field>
-                  </div>
-
-                  <div style="font-size: 0.8rem; color: #64748b; background: #f1f5f9; padding: 8px 12px; border-radius: 6px;">
-                    🔒 <strong>Segurança:</strong> O aplicativo opera exclusivamente com autenticação real via provedores federados (Google GIS / Microsoft Entra).
-                  </div>
-                </div>
-
-                <!-- Card 4: Configuração Google Drive & OneDrive -->
-                <div class="cloud-card">
-                  <h3>
-                    <md-icon>folder_shared</md-icon>
-                    Pastas de Destino (Google Drive &amp; OneDrive)
-                  </h3>
-
-                  <div class="form-group">
-                    <md-outlined-text-field
-                      label="ID da Pasta no Google Drive (Folder ID)"
-                      supporting-text="Opcional: se vazio, localiza ou cria '${homeDirName}' automaticamente no envio"
-                      style="width: 100%;"
-                      .value=${this.cloudConfig.googleDriveFolderId || ''}
-                      @input=${(e) => {
-                        this._updateCloudConfig({ googleDriveFolderId: e.target.value.trim() })
-                      }}
-                    ></md-outlined-text-field>
-                  </div>
-
-                  <div class="form-group">
-                    <md-outlined-text-field
-                      label="ID da Pasta no Microsoft OneDrive (Folder ID)"
-                      supporting-text="Opcional: se vazio, localiza ou cria '${homeDirName}' automaticamente no envio"
-                      style="width: 100%;"
-                      .value=${this.cloudConfig.oneDriveFolderId || ''}
-                      @input=${(e) => {
-                        this._updateCloudConfig({ oneDriveFolderId: e.target.value.trim() })
-                      }}
-                    ></md-outlined-text-field>
-                  </div>
-
-                  <label class="switch-label">
-                    <input
-                      type="checkbox"
-                      style="width: 18px; height: 18px; cursor: pointer;"
-                      .checked=${Boolean(this.cloudConfig.googleDriveConvertToDocs)}
-                      @change=${(e) => {
-                        this._updateCloudConfig({ googleDriveConvertToDocs: e.target.checked })
-                      }}
-                    />
-                    <span>
-                      <strong>Converter .docx em Google Docs nativo</strong>
-                      <div style="font-size: 0.78rem; color: #64748b;">
-                        Permite abrir e editar o documento diretamente no navegador via Google Docs.
-                      </div>
-                    </span>
-                  </label>
-
-                  <div class="form-group" style="margin-top: 10px;">
-                    <md-outlined-text-field
-                      label="Token OAuth2 Google Drive (Opcional)"
-                      supporting-text="Bearer token manual ou obtido automaticamente via GIS"
-                      style="width: 100%;"
-                      type="password"
-                      .value=${this.cloudConfig.googleAuthToken || ''}
-                      @input=${(e) => {
-                        this._updateCloudConfig({ googleAuthToken: e.target.value.trim() })
-                      }}
-                    ></md-outlined-text-field>
-                  </div>
-
-                  <div class="form-group">
-                    <md-outlined-text-field
-                      label="Token OAuth2 OneDrive (Opcional)"
-                      supporting-text="Bearer token Microsoft Graph ou obtido automaticamente via Entra"
-                      style="width: 100%;"
-                      type="password"
-                      .value=${this.cloudConfig.oneDriveAuthToken || ''}
-                      @input=${(e) => {
-                        this._updateCloudConfig({ oneDriveAuthToken: e.target.value.trim() })
-                      }}
-                    ></md-outlined-text-field>
-                  </div>
-
-                  <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px;">
-                    <md-filled-button @click=${() => alert(`✔ Configurações salvas! Provedor: ${this._getProviderLabel(rawProvider)} | Pasta Inicial: /${homeDirName}`)}>
-                      Salvar Configurações
-                    </md-filled-button>
-                  </div>
-                </div>
-              </div>
-
-              <!-- Tutorial: Como Obter Credenciais Reais -->
-              <details style="margin-top: 20px; background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px 16px; font-size: 0.9rem; line-height: 1.6;">
-                <summary style="font-weight: 600; cursor: pointer; color: #006a6a;">
-                  📘 Como obter o seu Google Client ID e Microsoft Client ID para login real (Passo a Passo)
-                </summary>
-
-                <div style="margin-top: 12px; display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px;">
-                  <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px;">
-                    <h4 style="margin: 0 0 8px 0; color: #1e3a8a; display: flex; align-items: center; gap: 6px;">
-                      <md-icon style="font-size: 18px;">travel_explore</md-icon> 1. Google Cloud Console
-                    </h4>
-                    <ol style="margin: 0; padding-left: 18px; font-size: 0.85rem; color: #334155;">
-                      <li>Acesse o <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener">Google Cloud Console</a> e crie um projeto (gratuito).</li>
-                      <li>Vá em <strong>Tela de consentimento OAuth</strong>, selecione <em>Externo</em> e informe o nome do seu aplicativo.</li>
-                      <li>Vá em <strong>Credenciais</strong> &gt; <strong>Criar Credenciais</strong> &gt; <strong>ID do cliente OAuth</strong>.</li>
-                      <li>Escolha o tipo <strong>Aplicativo da Web</strong>.</li>
-                      <li>Em <strong>Origens JavaScript autorizadas</strong>, adicione:
-                        <ul style="margin: 4px 0;">
-                          <li><code>https://wagnermarques.github.io</code></li>
-                          <li><code>http://localhost:5173</code> (se rodar em desenvolvimento local)</li>
-                        </ul>
-                      </li>
-                      <li>Em <strong>APIs e Serviços</strong>, ative a <strong>Google Drive API</strong> se desejar upload direto.</li>
-                      <li>Copie o <strong>Client ID</strong> gerado (ex: <code>...apps.googleusercontent.com</code>) e cole no campo <em>Google Cloud Client ID</em> acima!</li>
-                    </ol>
-                  </div>
-
-                  <div style="background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 14px;">
-                    <h4 style="margin: 0 0 8px 0; color: #0369a1; display: flex; align-items: center; gap: 6px;">
-                      <md-icon style="font-size: 18px;">cloud</md-icon> 2. Microsoft Azure Portal (Entra ID)
-                    </h4>
-                    <ol style="margin: 0; padding-left: 18px; font-size: 0.85rem; color: #334155;">
-                      <li>Acesse o <a href="https://portal.azure.com/#view/Microsoft_AAD_RegisteredApps/ApplicationsListBlade" target="_blank" rel="noopener">Portal do Azure (Registros de Aplicativo)</a>.</li>
-                      <li>Clique em <strong>Novo registro</strong>.</li>
-                      <li>Selecione <em>Contas em qualquer diretório organizacional e contas pessoais da Microsoft (ex: Skype, Xbox, Outlook.com)</em>.</li>
-                      <li>Em <strong>URI de Redirecionamento</strong>, escolha plataforma <strong>SPA (Aplicativo de Página Única)</strong> e adicione:
-                        <ul style="margin: 4px 0;">
-                          <li><code>https://wagnermarques.github.io/fzl-caqdas/</code></li>
-                          <li><code>http://localhost:5173/</code></li>
-                        </ul>
-                      </li>
-                      <li>Copie o <strong>ID do aplicativo (cliente)</strong> (formato GUID) e cole no campo <em>Microsoft Azure Client ID</em> acima!</li>
-                    </ol>
-                  </div>
-                </div>
-              </details>
-
-              <!-- Card 3: Lista de Documentos & Estado de Sincronização -->
-              <div style="margin-top: 24px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-                  <h3 style="margin: 0; color: #006a6a;">Documentos no Corpus &amp; Estado de Sincronização</h3>
-                  <md-outlined-button
-                    ?disabled=${!isAuthenticated || anySyncing}
-                    @click=${this._simulateDocsSyncForSample}
-                  >
-                    <md-icon slot="icon">sync</md-icon>
-                    Sincronizar Arquivos DOCX no Google Docs (Simulação)
-                  </md-outlined-button>
-                </div>
-
-                <table class="doc-link-table">
-                  <thead>
-                    <tr>
-                      <th>Documento</th>
-                      <th>Tipo</th>
-                      <th>Participante / Pasta</th>
-                      <th>Status de Sincronização</th>
-                      <th>Visualizador / Ação</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${this.documents.map((doc) => {
-                      const syncState = researchStorage.getDocumentSyncState(doc, this._syncingDocIds)
-                      const hasDocs = Boolean(doc.externalViewerUrl)
-                      const isSyncing = syncState === 'syncing'
-                      const hasRemote = syncState === 'synced'
-                      const formattedFolder = researchStorage.formatPersistenceFolder(doc.folder || 'entrevistas')
-                      const statusColor = isSyncing ? '#d97706' : hasRemote ? '#0284c7' : '#64748b'
-                      const statusIcon = isSyncing ? 'sync' : hasRemote ? 'cloud_done' : 'computer'
-                      const statusLabel = isSyncing ? 'Sincronizando...' : hasRemote ? 'Sincronizado' : 'Local'
-                      const actionLabel = isSyncing
-                        ? 'Sincronizando...'
-                        : !isAuthenticated
-                          ? 'Requer Login'
-                          : rawProvider === 'local'
-                            ? 'Modo Local'
-                            : hasRemote
-                              ? 'Re-sincronizar'
-                              : 'Sincronizar na Nuvem'
-                      return html`
-                        <tr>
-                          <td><strong>${doc.title}</strong></td>
-                          <td><code>${doc.extension || doc.type}</code></td>
-                          <td>${doc.participant || 'N/A'} (<code>${formattedFolder}</code>)</td>
-                          <td>
-                            <span style="display: inline-flex; align-items: center; gap: 4px; font-weight: 500; color: ${statusColor};">
-                              <md-icon style="font-size: 16px;">${statusIcon}</md-icon>
-                              ${statusLabel}
-                            </span>
-                          </td>
-                          <td>
-                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                              ${hasDocs
-                                ? html`
-                                    <a class="btn-external-link" href=${doc.externalViewerUrl} target="_blank" rel="noopener noreferrer">
-                                      <md-icon style="font-size: 14px;">open_in_new</md-icon>
-                                      ${doc.externalViewerLabel || 'Abrir na Nuvem ↗'}
-                                    </a>
-                                  `
-                                : ''}
-                              <md-outlined-button
-                                style="font-size: 0.78rem; --md-outlined-button-container-height: 30px; padding: 0 8px;"
-                                ?disabled=${!isAuthenticated || rawProvider === 'local' || isSyncing}
-                                @click=${() => this._syncDocViaController(doc)}
-                              >
-                                <md-icon slot="icon" style="font-size: 15px;">${isSyncing ? 'sync' : 'cloud_upload'}</md-icon>
-                                ${actionLabel}
-                              </md-outlined-button>
-                            </div>
-                          </td>
-                        </tr>
-                      `
-                    })}
-                  </tbody>
-                </table>
-              </div>
             </div>
           `
         : ''}

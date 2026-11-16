@@ -7,6 +7,17 @@ const STORAGE_CLOUD_KEY = 'fzl_caqdas_cloud_sync_v1'
 
 export const DEFAULT_HOME_DIR = 'APP-CADDAS-HOME-DIR'
 
+const PROVIDER_LABELS = {
+  'google-drive': 'Google Drive & Docs',
+  onedrive: 'Microsoft OneDrive',
+  local: 'Armazenamento Local (Navegador)',
+  rest: 'Servidor REST Customizado'
+}
+
+export function getPersistenceProviderLabel(provider) {
+  return PROVIDER_LABELS[provider] || provider || PROVIDER_LABELS.local
+}
+
 const DEFAULT_CLOUD_CONFIG = {
   provider: 'local',
   autoConfigureByAuthProvider: true,

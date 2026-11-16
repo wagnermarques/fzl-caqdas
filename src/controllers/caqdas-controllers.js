@@ -205,7 +205,7 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
   _formatCloudError(provider, errInfo, fallbackText = '') {
     if (provider === 'google-drive') {
       if (errInfo?.isApiDisabled) {
-        return 'A Google Drive API não está ativada no projeto Google Cloud deste Client ID (erro 403 accessNotConfigured). Ative a "Google Drive API" no Google Cloud Console ou informe outro Client ID / token OAuth em Persistência & Nuvem.'
+        return 'A Google Drive API não está ativada no projeto Google Cloud deste Client ID (erro 403 accessNotConfigured). Ative a "Google Drive API" no Google Cloud Console ou informe outro Client ID / token OAuth em Configurações > Persistência & Sincronização.'
       }
       if (errInfo?.isInsufficientScope) {
         return 'Sua sessão Google atual não possui permissão de escrita no Google Drive (escopo drive.file). Autorize o acesso ao Google Drive no popup de permissão ou reconecte sua conta.'

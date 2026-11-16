@@ -24,6 +24,7 @@ import './views/caqdas-memos-view.js'
 import './views/caqdas-reports-view.js'
 import './views/caqdas-theory-view.js'
 import './views/caqdas-app-docs-view.js'
+import './views/caqdas-persistence-config-view.js'
 
 createAppShell({
   mount: '#app',
@@ -88,6 +89,13 @@ createAppShell({
       name: 'documentacao-app',
       match: pattern('/documentacao-app'),
       render: () => html`<caqdas-app-docs-view></caqdas-app-docs-view>`
+    },
+    {
+      name: 'config-persistencia',
+      title: 'Persistência & Sincronização',
+      crumb: ['Config', 'Persistência & Nuvem'],
+      match: pattern('/config/persistencia'),
+      render: () => html`<caqdas-persistence-config-view></caqdas-persistence-config-view>`
     }
   ],
   drawer: {
@@ -126,10 +134,11 @@ createAppShell({
       },
       {
         id: 'account-section',
-        label: 'Acesso & Sincronização',
+        label: 'Acesso & Configurações',
         items: [
           { label: 'Minha Conta / Perfil', href: '#/conta', icon: 'account_circle' },
-          { label: 'Login Social (Google / Microsoft)', href: '#/conta/entrar', icon: 'login' }
+          { label: 'Login Social (Google / Microsoft)', href: '#/conta/entrar', icon: 'login' },
+          { label: 'Persistência & Sincronização (Nuvem)', href: '#/config/persistencia', icon: 'cloud_sync' }
         ]
       },
       {

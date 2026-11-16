@@ -1,6 +1,6 @@
 import { LitElement, html, css } from 'lit'
 import { authService } from 'fzl-fund-appshell--lit'
-import { researchStorage } from '../services/storage-service.js'
+import { researchStorage, getPersistenceProviderLabel } from '../services/storage-service.js'
 import { CaqdasDocxCodingController, CaqdasPersonalCloudDocsController } from '../controllers/caqdas-controllers.js'
 import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
@@ -279,21 +279,6 @@ export class CaqdasCodingView extends LitElement {
     })
   }
 
-  _getProviderLabel(provider) {
-    switch (provider) {
-      case 'google-drive':
-        return 'Google Drive'
-      case 'onedrive':
-        return 'OneDrive'
-      case 'local':
-        return 'Armazenamento Local'
-      case 'rest':
-        return 'REST Customizado'
-      default:
-        return provider || 'Armazenamento Local'
-    }
-  }
-
   _loadData() {
     this.documents = researchStorage.getDocuments()
     this.codes = researchStorage.getCodes()
@@ -373,7 +358,7 @@ export class CaqdasCodingView extends LitElement {
     const homeDirName = researchStorage.getHomeDirName()
     const persistenceChipColor = isCloudActive ? '#0284c7' : '#475569'
     const persistenceChipLabel = isCloudActive
-      ? `☁️ ${this._getProviderLabel(activeProvider)} · /${homeDirName}`
+      ? `☁️ ${getPersistenceProviderLabel(activeProvider)} · /${homeDirName}`
       : `💾 Local (Navegador) · /${homeDirName}`
     const docSyncState = researchStorage.getDocumentSyncState(doc)
     const docSyncChip =
@@ -422,7 +407,7 @@ export class CaqdasCodingView extends LitElement {
           data-home-dir=${homeDirName}
           label=${persistenceChipLabel}
           @fzl-click=${() => {
-            window.location.hash = '#/fontes'
+            window.location.hash = '#/config/persistencia'
           }}
         ></fzl-reader-chapterview>
 
@@ -435,7 +420,7 @@ export class CaqdasCodingView extends LitElement {
                 data-sync-state=${docSyncState}
                 label=${docSyncChip.label}
                 @fzl-click=${() => {
-                  window.location.hash = '#/fontes'
+                  window.location.hash = '#/config/persistencia'
                 }}
               ></fzl-reader-chapterview>
             `
