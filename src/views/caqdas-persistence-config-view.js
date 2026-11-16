@@ -781,6 +781,7 @@ export class CaqdasPersistenceConfigView extends LitElement {
 
           <div style="font-size: 0.8rem; color: #64748b; background: #f1f5f9; padding: 8px 12px; border-radius: 6px;">
             🔒 <strong>Segurança:</strong> Autenticação exclusivamente real via provedores federados (Google GIS / Microsoft Entra).
+            Consulte a <a href="./privacy.html" target="_blank" rel="noopener noreferrer" style="color: #0284c7;">Política de Privacidade</a>.
           </div>
         </div>
 

@@ -28,6 +28,14 @@ import './views/caqdas-persistence-config-view.js'
 
 createAppShell({
   mount: '#app',
+  footerItems: () => html`
+    <a
+      href="./privacy.html"
+      target="_blank"
+      rel="noopener noreferrer"
+      style="color: inherit; text-decoration: underline;"
+    >Privacidade</a>
+  `,
   ...(hasValidStoredGoogleId || hasValidStoredMsId
     ? {
         socialAuth: {

@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#006a6a" />
+    <title>Política de Privacidade — FZL CAQDAS</title>
+    <style>
+      :root {
+        color-scheme: light;
+      }
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        line-height: 1.65;
+        color: #1e293b;
+        background: #f8fafc;
+        margin: 0;
+        padding: 24px 16px;
+      }
+      main {
+        max-width: 820px;
+        margin: 0 auto;
+        background: #ffffff;
+        border: 1px solid #e2e8f0;
+        border-radius: 14px;
+        padding: 32px;
+        box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04);
+      }
+      h1 {
+        margin-top: 0;
+        color: #006a6a;
+        font-size: 1.65rem;
+      }
+      h2 {
+        margin-top: 26px;
+        color: #0f172a;
+        font-size: 1.15rem;
+        border-bottom: 1px solid #e2e8f0;
+        padding-bottom: 6px;
+      }
+      code {
+        background: #f1f5f9;
+        padding: 2px 6px;
+        border-radius: 4px;
+        font-size: 0.9em;
+      }
+      .meta {
+        color: #64748b;
+        font-size: 0.9rem;
+        margin-bottom: 20px;
+      }
+      .highlight {
+        background: #f0fdfa;
+        border-left: 4px solid #006a6a;
+        padding: 12px 16px;
+        border-radius: 0 8px 8px 0;
+        margin: 16px 0;
+      }
+      a {
+        color: #0284c7;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Política de Privacidade — FZL CAQDAS (Pesquisa Qualitativa)</h1>
+      <p class="meta">
+        Aplicação Web (PWA): <a href="https://wagnermarques.github.io/fzl-caqdas/">https://wagnermarques.github.io/fzl-caqdas/</a>
+        <br />
+        Última atualização: 16 de novembro de 2026
+      </p>
+
+      <div class="highlight">
+        <strong>Resumo de Privacidade:</strong> O <strong>FZL CAQDAS</strong> funciona inteiramente no navegador do usuário
+        (client-side PWA). Não mantemos servidor próprio para armazenar documentos de pesquisa, códigos qualitativos,
+        anotações ou credenciais Google/Microsoft do usuário.
+      </div>
+
+      <h2>1. Dados Acessados via Autenticação Google (OAuth 2.0)</h2>
+      <p>Ao optar por autenticar com sua conta Google, o aplicativo solicita exclusivamente os seguintes escopos mínimos:</p>
+      <ul>
+        <li>
+          <code>openid</code>, <code>profile</code>, <code>email</code>: exibem seu nome, endereço de e-mail e foto de
+          perfil apenas na interface local do seu navegador para identificar a sessão ativa.
+        </li>
+        <li>
+          <code>https://www.googleapis.com/auth/drive.file</code> (escopo por arquivo, menor privilégio): utilizado
+          exclusivamente quando você escolhe sincronizar ou enviar documentos do seu corpus de pesquisa (entrevistas,
+          transcrições, documentos Word e capturas de campo) para a pasta configurada (padrão <code>APP-CADDAS-HOME-DIR</code>)
+          no seu próprio Google Drive / Google Docs.
+        </li>
+      </ul>
+      <p>
+        <strong>Restrição estrita de acesso:</strong> com o escopo <code>drive.file</code>, o aplicativo
+        <strong>não consegue listar, ler, modificar ou apagar</strong> nenhum outro arquivo pré-existente na sua conta
+        do Google Drive que não tenha sido criado ou explicitamente selecionado por você nesta aplicação.
+      </p>
+
+      <h2>2. Armazenamento, Processamento e Compartilhamento de Dados</h2>
+      <ul>
+        <li>
+          <strong>Armazenamento local:</strong> corpus de documentos, códigos Bardin, memorandos e preferências ficam
+          salvos apenas no armazenamento local do seu próprio navegador (<code>localStorage</code> e <code>sessionStorage</code>).
+        </li>
+        <li>
+          <strong>Armazenamento em nuvem sob seu controle:</strong> quando autorizado por você, os arquivos enviados são
+          transmitidos diretamente do seu navegador para a API oficial do Google Drive / Google Docs ou Microsoft OneDrive.
+        </li>
+        <li>
+          <strong>Zero venda ou repasse:</strong> não vendemos, alugamos ou transferimos dados pessoais ou conteúdos de
+          pesquisa para terceiros, corretores de dados ou serviços de publicidade.
+        </li>
+      </ul>
+
+      <h2>3. Conformidade com a Política de Dados do Google (Limited Use)</h2>
+      <p>
+        O uso e a transferência de informações recebidas das APIs do Google pelo <strong>FZL CAQDAS</strong> seguem a
+        <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer">
+          Política de Dados de Usuário dos Serviços de API do Google (Google API Services User Data Policy)
+        </a>, incluindo os requisitos de Uso Limitado (<em>Limited Use</em>).
+      </p>
+
+      <h2>4. Revogação de Acesso e Exclusão</h2>
+      <p>
+        Você pode encerrar a sessão a qualquer momento clicando em <strong>Desconectar</strong> dentro do aplicativo, limpar
+        os dados do navegador ou revogar imediatamente a permissão concedida em
+        <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer">
+          myaccount.google.com/permissions
+        </a>.
+      </p>
+
+      <h2>5. Contato</h2>
+      <p>
+        Dúvidas sobre esta política de privacidade ou solicitações relacionadas aos dados podem ser enviadas para
+        <a href="mailto:wagnerdocri@gmail.com">wagnerdocri@gmail.com</a>.
+      </p>
+
+      <p style="margin-top: 28px;">
+        <a href="./">← Voltar ao FZL CAQDAS</a>
+      </p>
+    </main>
+  </body>
+</html>
