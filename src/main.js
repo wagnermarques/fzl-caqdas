@@ -5,8 +5,13 @@ import '@fzl/design-tokens/tokens.css'
 import { createAppShell, pattern } from 'fzl-fund-appshell--lit'
 import { researchStorage } from './services/storage-service.js'
 
-// Sincroniza Client IDs declarados localmente com a configuração social nativa do AppShell
+// Sincroniza Client IDs válidos declarados localmente sem sobrescrever o appshell.config.js com valores vazios/inválidos
 const initialCloudCfg = researchStorage.getCloudSyncConfig()
+const storedGoogleId = typeof initialCloudCfg.googleClientId === 'string' ? initialCloudCfg.googleClientId.trim() : ''
+const storedMicrosoftId = typeof initialCloudCfg.microsoftClientId === 'string' ? initialCloudCfg.microsoftClientId.trim() : ''
+const hasValidStoredGoogleId =
+  storedGoogleId.endsWith('.apps.googleusercontent.com') && storedGoogleId.length > '.apps.googleusercontent.com'.length
+const hasValidStoredMsId = /^[0-9a-f-]{8,}$/i.test(storedMicrosoftId)
 
 // Import Views
 import './views/caqdas-home-view.js'
@@ -21,11 +26,15 @@ import './views/caqdas-app-docs-view.js'
 
 createAppShell({
   mount: '#app',
-  socialAuth: {
-    enabled: true,
-    ...(initialCloudCfg.googleClientId ? { googleClientId: initialCloudCfg.googleClientId } : {}),
-    ...(initialCloudCfg.microsoftClientId ? { microsoftClientId: initialCloudCfg.microsoftClientId } : {}),
-  },
+  ...(hasValidStoredGoogleId || hasValidStoredMsId
+    ? {
+        socialAuth: {
+          enabled: true,
+          ...(hasValidStoredGoogleId ? { googleClientId: storedGoogleId } : {}),
+          ...(hasValidStoredMsId ? { microsoftClientId: storedMicrosoftId } : {}),
+        },
+      }
+    : {}),
   on: {
     'auth:login': ({ user, reason }) => {
       console.info(`[FZL CAQDAS] Usuário autenticado (${reason || 'sessão'}):`, user?.name, user?.email, user?.provider)

@@ -4,15 +4,14 @@ export default defineAppShellConfig({
   title: 'FZL CAQDAS — Pesquisa Qualitativa',
   storagePrefix: 'fzl-caqdas',
   // Configuração declarativa nativa de autenticação social do AppShell (Google e Microsoft)
+  // Origem autorizada padrão deste Client ID Google: https://wagnermarques.github.io
   socialAuth: {
     enabled: true,
     providers: 'all',
     googleClientId: '71632020257-bunqshu7n4ein9v46amajmk21ts25b5p.apps.googleusercontent.com',
     microsoftClientId: '',
     microsoftTenantId: 'common',
-    requestDriveScope: true,
-    googleScopes: 'https://www.googleapis.com/auth/drive.file openid profile email',
-    microsoftScopes: 'openid profile email User.Read Files.ReadWrite',
+    requestDriveScope: false,
   },
   // Acessibilidade oficial do AppShell
   accessibility: {
