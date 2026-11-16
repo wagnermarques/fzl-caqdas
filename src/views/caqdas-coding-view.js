@@ -1,11 +1,12 @@
 import { LitElement, html, css } from 'lit'
 import { researchStorage } from '../services/storage-service.js'
-import { CaqdasDocxCodingController } from '../controllers/caqdas-controllers.js'
+import { CaqdasDocxCodingController, CaqdasPersonalCloudDocsController } from '../controllers/caqdas-controllers.js'
 import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
 import '@material/web/icon/icon.js'
 import '@material/web/select/outlined-select.js'
 import '@material/web/select/select-option.js'
+import '@fzl/webcomponents-lit/reader-chapterview'
 
 export class CaqdasCodingView extends LitElement {
   static styles = css`
@@ -208,9 +209,11 @@ export class CaqdasCodingView extends LitElement {
   static properties = {
     documents: { state: true },
     codes: { state: true },
+    cloudConfig: { state: true },
     selectedDocId: { state: true },
     selectedText: { state: true },
     selectedCodeId: { state: true },
+    selectedUrId: { state: true },
     showUrList: { state: true }
   }
 
@@ -218,23 +221,66 @@ export class CaqdasCodingView extends LitElement {
     super()
     this.documents = []
     this.codes = []
+    this.cloudConfig = researchStorage.getCloudSyncConfig()
     this.selectedDocId = ''
     this.selectedText = ''
     this.selectedCodeId = ''
+    this.selectedUrId = ''
     this.showUrList = true
     this.readerController = new CaqdasDocxCodingController(this, { fontSize: 16 })
+    this.cloudController = new CaqdasPersonalCloudDocsController(this)
   }
 
   connectedCallback() {
     super.connectedCallback()
     this._loadData()
+    this.cloudConfig = researchStorage.getCloudSyncConfig()
     this._onDataChanged = () => this._loadData()
+    this._onCloudChanged = (e) => {
+      this.cloudConfig = e.detail || researchStorage.getCloudSyncConfig()
+      this.requestUpdate()
+      this.updateComplete.then(() => this._syncPersistenceChips())
+    }
     window.addEventListener('caqdas-data-changed', this._onDataChanged)
+    window.addEventListener('caqdas-cloud-sync-changed', this._onCloudChanged)
   }
 
   disconnectedCallback() {
     super.disconnectedCallback()
     window.removeEventListener('caqdas-data-changed', this._onDataChanged)
+    window.removeEventListener('caqdas-cloud-sync-changed', this._onCloudChanged)
+  }
+
+  firstUpdated() {
+    this._syncPersistenceChips()
+  }
+
+  updated() {
+    this._syncPersistenceChips()
+  }
+
+  _syncPersistenceChips() {
+    const chapterGroup = this.shadowRoot?.querySelector('fzl-reader-chapterview-group') || null
+    const chapterViews = Array.from(this.shadowRoot?.querySelectorAll('fzl-reader-chapterview') || [])
+    this.cloudController.configurePersistenceComponents({
+      chapterViewGroup: chapterGroup,
+      chapterViews
+    })
+  }
+
+  _getProviderLabel(provider) {
+    switch (provider) {
+      case 'google-drive':
+        return 'Google Drive'
+      case 'onedrive':
+        return 'OneDrive'
+      case 'local':
+        return 'Armazenamento Local'
+      case 'rest':
+        return 'REST Customizado'
+      default:
+        return provider || 'Google Drive'
+    }
   }
 
   _loadData() {
@@ -266,10 +312,12 @@ export class CaqdasCodingView extends LitElement {
   _selectDoc(id) {
     this.selectedDocId = id
     this.selectedText = ''
+    this.selectedUrId = ''
     this._syncReaderDoc()
   }
 
   _selectRegistrationUnit(ur) {
+    this.selectedUrId = ur.urId
     this.selectedText = ur.text
   }
 
@@ -308,6 +356,19 @@ export class CaqdasCodingView extends LitElement {
   render() {
     const doc = this.documents.find(d => d.id === this.selectedDocId) || this.documents[0]
     const codeMap = new Map(this.codes.map(c => [c.id, c]))
+    const activeProvider = this.cloudConfig?.provider || 'google-drive'
+    const homeDirName = researchStorage.getHomeDirName()
+    const docFolder = researchStorage.formatPersistenceFolder(
+      doc?.folder || (doc?.type === 'interview' ? 'entrevistas' : 'documentos')
+    )
+    const urs = this.readerController.toRegistrationUnits()
+    const urChipItems = urs.map((ur) => ({
+      id: ur.urId,
+      value: ur.urId,
+      label: ur.label,
+      count: ur.wordCount,
+      color: '#006a6a'
+    }))
 
     return html`
       <div>
@@ -317,7 +378,7 @@ export class CaqdasCodingView extends LitElement {
         </p>
       </div>
 
-      <div style="margin-top: 16px; display: flex; align-items: center; gap: 12px;">
+      <div style="margin-top: 16px; display: flex; align-items: center; flex-wrap: wrap; gap: 12px;">
         <label style="font-weight: 500;">Documento:</label>
         <select
           style="padding: 8px 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 0.95rem;"
@@ -328,6 +389,18 @@ export class CaqdasCodingView extends LitElement {
             <option value=${d.id} ?selected=${d.id === this.selectedDocId}>${d.title} (${d.participant})</option>
           `)}
         </select>
+
+        <fzl-reader-chapterview
+          variant="pill"
+          color="#0284c7"
+          selected
+          data-storage-provider=${activeProvider}
+          data-home-dir=${homeDirName}
+          label="☁️ ${this._getProviderLabel(activeProvider)} · /${homeDirName}"
+          @fzl-click=${() => {
+            window.location.hash = '#/fontes'
+          }}
+        ></fzl-reader-chapterview>
       </div>
 
       <div class="layout">
@@ -338,7 +411,7 @@ export class CaqdasCodingView extends LitElement {
                 ${doc?.title || 'Selecione um documento'}
               </h2>
               <div style="font-size: 0.82rem; color: #666; margin-top: 4px;">
-                Participante: <strong>${doc?.participant || 'N/A'}</strong> | Tipo: <em>${doc?.type || 'Texto'}</em>
+                Participante: <strong>${doc?.participant || 'N/A'}</strong> | Pasta: <code>${docFolder}</code>
                 | Palavras: <strong>${this.readerController.document?.wordCount || doc?.content?.split(/\s+/).length || 0}</strong>
               </div>
             </div>
@@ -359,23 +432,28 @@ export class CaqdasCodingView extends LitElement {
             </div>
           </div>
 
-          <!-- Unidades de Registro de Bardin (URs) -->
+          <!-- Unidades de Registro de Bardin (URs) via <fzl-reader-chapterview-group> e <fzl-reader-chapterview> -->
           <div class="ur-chips-container">
             <span style="font-size: 0.78rem; font-weight: 600; color: #004d40; width: 100%;">
               Unidades de Registro (Bardin) — clique em uma UR para selecioná-la inteira para codificação:
             </span>
-            ${this.readerController.toRegistrationUnits().map(
-              (ur) => html`
-                <button
-                  class="ur-chip"
-                  title="${ur.text.slice(0, 100)}..."
-                  @click=${() => this._selectRegistrationUnit(ur)}
-                >
-                  <md-icon style="font-size: 13px;">bookmark</md-icon>
-                  <strong>${ur.label}</strong> (${ur.wordCount} pal.)
-                </button>
-              `
-            )}
+            <fzl-reader-chapterview-group
+              aria-label="Unidades de Registro de Bardin"
+              selection-mode="single"
+              data-storage-provider=${activeProvider}
+              data-home-dir=${homeDirName}
+              .items=${urChipItems}
+              .selected=${this.selectedUrId}
+              @fzl-change=${(e) => {
+                const urId = e.detail?.selected || e.detail?.value
+                const match = urs.find((u) => u.urId === urId)
+                if (match) {
+                  this._selectRegistrationUnit(match)
+                } else {
+                  this.selectedUrId = ''
+                }
+              }}
+            ></fzl-reader-chapterview-group>
           </div>
 
           <div

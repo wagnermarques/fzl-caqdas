@@ -2,7 +2,7 @@ import { html } from 'lit'
 import './styles/app.css'
 import 'fzl-fund-appshell--lit/styles/theme.css'
 import '@fzl/design-tokens/tokens.css'
-import { createAppShell, pattern } from 'fzl-fund-appshell--lit'
+import { createAppShell, pattern, authService } from 'fzl-fund-appshell--lit'
 import { researchStorage } from './services/storage-service.js'
 
 // Sincroniza Client IDs válidos declarados localmente sem sobrescrever o appshell.config.js com valores vazios/inválidos
@@ -37,6 +37,7 @@ createAppShell({
     : {}),
   on: {
     'auth:login': ({ user, reason }) => {
+      researchStorage.syncProviderFromAuthUser(user)
       console.info(`[FZL CAQDAS] Usuário autenticado (${reason || 'sessão'}):`, user?.name, user?.email, user?.provider)
     },
     'auth:logout': ({ reason }) => {
@@ -136,5 +137,12 @@ createAppShell({
         ]
       }
     ]
+  }
+})
+
+// Garante ajuste automático de persistência (GDrive / OneDrive) ao restaurar ou atualizar a sessão autenticada
+authService.subscribe((user, reason) => {
+  if (user && reason !== 'socialAuthConfig') {
+    researchStorage.syncProviderFromAuthUser(user)
   }
 })

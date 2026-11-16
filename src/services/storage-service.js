@@ -5,8 +5,12 @@ const STORAGE_KEY = 'fzl_caqdas_research_data_v1'
 const STORAGE_THEORY_KEY = 'fzl_caqdas_theory_study_v1'
 const STORAGE_CLOUD_KEY = 'fzl_caqdas_cloud_sync_v1'
 
+export const DEFAULT_HOME_DIR = 'APP-CADDAS-HOME-DIR'
+
 const DEFAULT_CLOUD_CONFIG = {
   provider: 'google-drive',
+  autoConfigureByAuthProvider: true,
+  homeDirName: DEFAULT_HOME_DIR,
   googleClientId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GOOGLE_CLIENT_ID) || '',
   microsoftClientId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MICROSOFT_CLIENT_ID) || '',
   microsoftTenantId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MICROSOFT_TENANT_ID) || 'common',
@@ -79,6 +83,66 @@ class ResearchStorageService {
     localStorage.setItem(STORAGE_CLOUD_KEY, JSON.stringify(updated))
     window.dispatchEvent(new CustomEvent('caqdas-cloud-sync-changed', { detail: updated }))
     return updated
+  }
+
+  /**
+   * Retorna o nome sanitizado da pasta inicial padrão de persistência (default: APP-CADDAS-HOME-DIR).
+   */
+  getHomeDirName() {
+    const cfg = this.getCloudSyncConfig()
+    const clean = String(cfg.homeDirName || '')
+      .trim()
+      .replace(/^\/+|\/+$/g, '')
+    return clean || DEFAULT_HOME_DIR
+  }
+
+  /**
+   * Normaliza qualquer subpasta do corpus para residir sob a pasta raiz configurada (/{homeDirName}/...).
+   */
+  formatPersistenceFolder(subFolder = '') {
+    const homeDir = this.getHomeDirName()
+    const clean = String(subFolder || '')
+      .trim()
+      .replace(/^\/+|\/+$/g, '')
+    if (!clean) return `/${homeDir}`
+    if (clean === homeDir || clean.startsWith(`${homeDir}/`)) {
+      return `/${clean}`
+    }
+    return `/${homeDir}/${clean}`
+  }
+
+  /**
+   * Ajusta automaticamente o provedor de persistência (Google Drive ou OneDrive)
+   * com base na conta social autenticada, quando autoConfigureByAuthProvider estiver ativo.
+   */
+  syncProviderFromAuthUser(user) {
+    const cfg = this.getCloudSyncConfig()
+    if (!user || cfg.autoConfigureByAuthProvider === false) {
+      return cfg
+    }
+
+    const email = String(user.email || '').toLowerCase()
+    const providerHint = String(user.provider || '').toLowerCase()
+    let targetProvider = null
+
+    if (
+      providerHint === 'google' ||
+      email.includes('@gmail.') ||
+      email.endsWith('@googlemail.com') ||
+      String(user.avatarUrl || '').includes('googleusercontent.com')
+    ) {
+      targetProvider = 'google-drive'
+    } else if (
+      providerHint === 'microsoft' ||
+      /@(outlook|hotmail|live|msn)\./i.test(email)
+    ) {
+      targetProvider = 'onedrive'
+    }
+
+    if (targetProvider && targetProvider !== cfg.provider) {
+      return this.saveCloudSyncConfig({ provider: targetProvider })
+    }
+    return cfg
   }
 
   updateDocument(docId, updates) {

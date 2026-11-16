@@ -3,11 +3,12 @@
  * FZL CAQDAS — Controladores Reativos Especializados para Pesquisa Qualitativa
  *
  * Estende e especializa os controllers headless do ecossistema FZL:
- * - FzlPersonalCloudDocsController -> CaqdasPersonalCloudDocsController (envio direto e sincronização com Google Docs)
+ * - FzlPersonalCloudDocsController -> CaqdasPersonalCloudDocsController (envio direto e sincronização com Google Docs / OneDrive)
  * - FzlDocxReaderController -> CaqdasDocxCodingController (decomposição em Unidades de Registro de Bardin)
  * - FzlBookmarksController -> CaqdasBookmarksController (favoritos e destaque de documentos do corpus)
  */
 
+import { authService } from 'fzl-fund-appshell--lit'
 import {
   FzlPersonalCloudDocsController,
   FzlDocxReaderController,
@@ -23,17 +24,315 @@ import { researchStorage } from '../services/storage-service.js'
 export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsController {
   constructor(host, options = {}) {
     const cloudCfg = researchStorage.getCloudSyncConfig()
+    const socialCfg = authService.getSocialAuthConfig?.() || {}
     super(host, {
       convertToGoogleDocs: cloudCfg.googleDriveConvertToDocs ?? true,
       googleDriveFolderId: cloudCfg.googleDriveFolderId || undefined,
       oneDriveFolderId: cloudCfg.oneDriveFolderId || undefined,
       authConfig: {
-        googleClientId: cloudCfg.googleClientId || undefined,
-        microsoftClientId: cloudCfg.microsoftClientId || undefined,
-        microsoftTenantId: cloudCfg.microsoftTenantId || 'common'
+        googleClientId: cloudCfg.googleClientId || socialCfg.googleClientId || undefined,
+        microsoftClientId: cloudCfg.microsoftClientId || socialCfg.microsoftClientId || undefined,
+        microsoftTenantId: cloudCfg.microsoftTenantId || socialCfg.microsoftTenantId || 'common',
+        requestDriveScope: true
       },
       ...options
     })
+  }
+
+  get currentUser() {
+    return super.currentUser || authService.getCurrentUser?.() || null
+  }
+
+  get isAuthenticated() {
+    return Boolean(this.currentUser)
+  }
+
+  /**
+   * Garante que a configuração de Client IDs do authController interno acompanhe
+   * dinamicamente o AppShell (appshell.config.js) e a configuração local.
+   */
+  _syncInternalAuthConfig() {
+    const cloudCfg = researchStorage.getCloudSyncConfig()
+    const socialCfg = authService.getSocialAuthConfig?.() || {}
+    this.authController.configure(
+      {
+        googleClientId: cloudCfg.googleClientId || socialCfg.googleClientId || '',
+        microsoftClientId: cloudCfg.microsoftClientId || socialCfg.microsoftClientId || '',
+        microsoftTenantId: cloudCfg.microsoftTenantId || socialCfg.microsoftTenantId || 'common',
+        requestDriveScope: true
+      },
+      false
+    )
+    return cloudCfg
+  }
+
+  /**
+   * Resolve um token OAuth2 válido para Google Drive ou Microsoft OneDrive,
+   * priorizando tokens configurados manualmente, token social da sessão do AppShell
+   * e fallback sob demanda via FzlSocialAuthController.
+   */
+  async resolveCloudAccessToken(provider) {
+    const cloudCfg = this._syncInternalAuthConfig()
+    const appUser = authService.getCurrentUser?.()
+    const storedAppToken = typeof authService.getAccessToken === 'function' ? await authService.getAccessToken() : ''
+    const isJwtCredential = typeof storedAppToken === 'string' && storedAppToken.split('.').length === 3
+
+    if (provider === 'google-drive' || provider === 'google') {
+      if (cloudCfg.googleAuthToken) return cloudCfg.googleAuthToken
+      if (appUser?.provider === 'google') {
+        if (appUser.socialAccessToken) return appUser.socialAccessToken
+        if (storedAppToken && !isJwtCredential) return storedAppToken
+      }
+      return (await this.authController.requestCloudAccessToken('google')) || ''
+    }
+
+    if (provider === 'onedrive' || provider === 'microsoft') {
+      if (cloudCfg.oneDriveAuthToken) return cloudCfg.oneDriveAuthToken
+      if (appUser?.provider === 'microsoft') {
+        if (appUser.socialAccessToken) return appUser.socialAccessToken
+        if (storedAppToken && !isJwtCredential) return storedAppToken
+      }
+      return (await this.authController.requestCloudAccessToken('microsoft')) || ''
+    }
+
+    return ''
+  }
+
+  /**
+   * Localiza ou cria automaticamente a pasta inicial configurada (padrão APP-CADDAS-HOME-DIR)
+   * no Google Drive ou no OneDrive e salva seu ID real nas configurações locais.
+   */
+  async ensureCloudHomeFolderId(provider, token) {
+    const cloudCfg = researchStorage.getCloudSyncConfig()
+    const homeDirName = researchStorage.getHomeDirName()
+
+    if (provider === 'google-drive') {
+      if (cloudCfg.googleDriveFolderId) return cloudCfg.googleDriveFolderId
+      if (!token) return ''
+
+      try {
+        const escapedName = homeDirName.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+        const query = encodeURIComponent(
+          `name='${escapedName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`
+        )
+        const searchRes = await fetch(
+          `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)&pageSize=1`,
+          {
+            headers: { Authorization: `Bearer ${token}` }
+          }
+        )
+        if (searchRes.ok) {
+          const searchData = await searchRes.json()
+          const foundId = searchData?.files?.[0]?.id
+          if (foundId) {
+            researchStorage.saveCloudSyncConfig({ googleDriveFolderId: foundId })
+            return foundId
+          }
+        }
+
+        const createRes = await fetch('https://www.googleapis.com/drive/v3/files?fields=id,name', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            name: homeDirName,
+            mimeType: 'application/vnd.google-apps.folder'
+          })
+        })
+        if (createRes.ok) {
+          const created = await createRes.json()
+          if (created?.id) {
+            researchStorage.saveCloudSyncConfig({ googleDriveFolderId: created.id })
+            return created.id
+          }
+        }
+      } catch (err) {
+        console.warn('[CAQDAS] Não foi possível localizar/criar a pasta no Google Drive:', err)
+      }
+      return ''
+    }
+
+    if (provider === 'onedrive') {
+      if (cloudCfg.oneDriveFolderId) return cloudCfg.oneDriveFolderId
+      if (!token) return ''
+
+      try {
+        const encodedDir = encodeURIComponent(homeDirName)
+        const lookupRes = await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:/${encodedDir}?$select=id,name`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        if (lookupRes.ok) {
+          const existing = await lookupRes.json()
+          if (existing?.id) {
+            researchStorage.saveCloudSyncConfig({ oneDriveFolderId: existing.id })
+            return existing.id
+          }
+        }
+
+        if (lookupRes.status === 404) {
+          const createRes = await fetch('https://graph.microsoft.com/v1.0/me/drive/root/children', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              name: homeDirName,
+              folder: {},
+              '@microsoft.graph.conflictBehavior': 'rename'
+            })
+          })
+          if (createRes.ok) {
+            const created = await createRes.json()
+            if (created?.id) {
+              researchStorage.saveCloudSyncConfig({ oneDriveFolderId: created.id })
+              return created.id
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[CAQDAS] Não foi possível localizar/criar a pasta no OneDrive:', err)
+      }
+      return ''
+    }
+
+    return ''
+  }
+
+  /**
+   * Aplica automaticamente a configuração ativa de persistência (GDrive, OneDrive, Local ou REST)
+   * e a pasta padrão inicial (APP-CADDAS-HOME-DIR) nos 5 web components do fluxo.
+   */
+  configurePersistenceComponents({
+    fileManager,
+    documentPicker,
+    cameraCapture,
+    chapterViewGroup,
+    chapterViews = []
+  } = {}) {
+    const cloudCfg = this._syncInternalAuthConfig()
+    const homeDirName = researchStorage.getHomeDirName()
+    const rawProvider = cloudCfg.provider || 'google-drive'
+    const effectiveProvider = rawProvider === 'local' ? 'rest' : rawProvider
+
+    const googleTokenProvider = async () => {
+      const token = await this.resolveCloudAccessToken('google-drive')
+      if (token && !researchStorage.getCloudSyncConfig().googleDriveFolderId) {
+        const folderId = await this.ensureCloudHomeFolderId('google-drive', token)
+        if (folderId) {
+          if (fileManager) fileManager.googleDriveFolderId = folderId
+          if (documentPicker) documentPicker.googleDriveFolderId = folderId
+        }
+      }
+      return token
+    }
+
+    const oneDriveTokenProvider = async () => {
+      const token = await this.resolveCloudAccessToken('onedrive')
+      if (token && !researchStorage.getCloudSyncConfig().oneDriveFolderId) {
+        const folderId = await this.ensureCloudHomeFolderId('onedrive', token)
+        if (folderId) {
+          if (fileManager) fileManager.oneDriveFolderId = folderId
+          if (documentPicker) documentPicker.oneDriveFolderId = folderId
+        }
+      }
+      return token
+    }
+
+    for (const el of [fileManager, documentPicker]) {
+      if (!el) continue
+      if (typeof el.bindSocialAuth === 'function' && cloudCfg.autoConfigureByAuthProvider !== false && (rawProvider === 'google-drive' || rawProvider === 'onedrive')) {
+        el.bindSocialAuth(this.authController, {
+          convertToGoogleDocs: Boolean(cloudCfg.googleDriveConvertToDocs),
+          googleDriveFolderId: cloudCfg.googleDriveFolderId || undefined,
+          oneDriveFolderId: cloudCfg.oneDriveFolderId || undefined
+        })
+      } else {
+        el.uploadController?.unbindSocialAuth?.()
+      }
+
+      el.storageProvider = effectiveProvider
+      el.googleDriveFolderId = cloudCfg.googleDriveFolderId || ''
+      el.oneDriveFolderId = cloudCfg.oneDriveFolderId || ''
+      el.googleDriveConvertToDocs = Boolean(cloudCfg.googleDriveConvertToDocs)
+      el.googleAuthToken = cloudCfg.googleAuthToken || ''
+      el.oneDriveAuthToken = cloudCfg.oneDriveAuthToken || ''
+      el.googleTokenProvider = googleTokenProvider
+      el.oneDriveTokenProvider = oneDriveTokenProvider
+      if (el.dataset) {
+        el.dataset.storageProvider = rawProvider
+        el.dataset.homeDir = homeDirName
+      }
+    }
+
+    if (fileManager && (!fileManager.currentFolder || fileManager.currentFolder === '/')) {
+      fileManager.currentFolder = `/${homeDirName}`
+    }
+
+    for (const el of [cameraCapture, chapterViewGroup, ...(chapterViews || [])]) {
+      if (!el?.dataset) continue
+      el.dataset.storageProvider = rawProvider
+      el.dataset.homeDir = homeDirName
+    }
+  }
+
+  /**
+   * Sobrescreve o envio à nuvem pessoal para suportar a sessão do AppShell (authService)
+   * e o provedor de persistência selecionado (Google Drive ou OneDrive), garantindo
+   * a resolução automática da pasta inicial configurada (APP-CADDAS-HOME-DIR).
+   */
+  async uploadToPersonalCloud(file, options = {}) {
+    const cloudCfg = this._syncInternalAuthConfig()
+    const user = this.currentUser
+
+    if (!user && !cloudCfg.googleAuthToken && !cloudCfg.oneDriveAuthToken) {
+      return super.uploadToPersonalCloud(file, options)
+    }
+
+    const useOneDrive =
+      cloudCfg.provider === 'onedrive' ||
+      (cloudCfg.provider !== 'google-drive' && user?.provider === 'microsoft')
+    const targetCloud = useOneDrive ? 'onedrive' : 'google-drive'
+    const token = await this.resolveCloudAccessToken(targetCloud)
+
+    if (!token) {
+      return {
+        success: false,
+        provider: targetCloud,
+        error: `Autenticação ${useOneDrive ? 'Microsoft OneDrive' : 'Google Drive'} necessária para enviar o documento.`
+      }
+    }
+
+    const resolvedFolderId = options.folderId || (await this.ensureCloudHomeFolderId(targetCloud, token))
+    const overrideConfig =
+      targetCloud === 'google-drive'
+        ? {
+            provider: 'google-drive',
+            googleDriveConvertToDocs: options.convertToGoogleDocs ?? cloudCfg.googleDriveConvertToDocs ?? true,
+            googleDriveFolderId: resolvedFolderId || undefined,
+            googleAuthToken: token
+          }
+        : {
+            provider: 'onedrive',
+            oneDriveFolderId: resolvedFolderId || undefined,
+            oneDriveAuthToken: token
+          }
+
+    const result = await this.uploadFile(file, overrideConfig, options.context)
+
+    if (result.success) {
+      const effectiveUser = user || {
+        name: 'Pesquisador',
+        email: '',
+        provider: useOneDrive ? 'microsoft' : 'google'
+      }
+      await this.onPersonalDocUploaded(file, result, effectiveUser)
+      this.emitHostEvent('fzl-personal-cloud-uploaded', { file, result, user: effectiveUser })
+    }
+
+    return result
   }
 
   /**
@@ -59,12 +358,12 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
       })
     } else {
       // Se for um novo documento importado diretamente pela nuvem
-      const ext = file.name.slice(file.name.lastIndexOf('.'))
+      const ext = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')) : '.txt'
       targetDoc = researchStorage.addDocument({
         title: file.name,
         participant: user.name || 'Pesquisador',
         group: 'Nuvem Pessoal',
-        folder: '/documentos',
+        folder: researchStorage.formatPersistenceFolder('documentos'),
         type: ext === '.docx' ? 'docx' : ext === '.pdf' ? 'pdf' : 'interview',
         extension: ext,
         size: file.size,
@@ -83,7 +382,7 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
 
   /**
    * Sincroniza sob demanda um documento já existente no corpus local
-   * com o Google Docs do pesquisador.
+   * com a nuvem configurada (Google Docs/Drive ou OneDrive).
    */
   async syncCorpusDocument(doc, options = {}) {
     const text = doc.content || doc.title || ''
