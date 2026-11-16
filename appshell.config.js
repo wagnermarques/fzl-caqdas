@@ -7,7 +7,7 @@ export default defineAppShellConfig({
   socialAuth: {
     enabled: true,
     providers: 'all',
-    googleClientId: '',
+    googleClientId: '71632020257-bunqshu7n4ein9v46amajmk21ts25b5p.apps.googleusercontent.com',
     microsoftClientId: '',
     microsoftTenantId: 'common',
     requestDriveScope: true,
