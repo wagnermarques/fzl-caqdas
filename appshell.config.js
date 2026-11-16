@@ -11,7 +11,7 @@ export default defineAppShellConfig({
     googleClientId: '71632020257-bunqshu7n4ein9v46amajmk21ts25b5p.apps.googleusercontent.com',
     microsoftClientId: '',
     microsoftTenantId: 'common',
-    requestDriveScope: false,
+    requestDriveScope: true,
   },
   // Acessibilidade oficial do AppShell
   accessibility: {

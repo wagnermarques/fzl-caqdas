@@ -4,6 +4,7 @@ import 'fzl-fund-appshell--lit/styles/theme.css'
 import '@fzl/design-tokens/tokens.css'
 import { createAppShell, pattern, authService } from 'fzl-fund-appshell--lit'
 import { researchStorage } from './services/storage-service.js'
+import { clearCachedCloudTokens } from './controllers/caqdas-controllers.js'
 
 // Sincroniza Client IDs válidos declarados localmente sem sobrescrever o appshell.config.js com valores vazios/inválidos
 const initialCloudCfg = researchStorage.getCloudSyncConfig()
@@ -41,6 +42,7 @@ createAppShell({
       console.info(`[FZL CAQDAS] Usuário autenticado (${reason || 'sessão'}):`, user?.name, user?.email, user?.provider)
     },
     'auth:logout': ({ reason }) => {
+      clearCachedCloudTokens()
       researchStorage.resetProviderWhenUnauthenticated(null)
       console.info(`[FZL CAQDAS] Sessão encerrada (${reason || 'manual'})`)
     },
@@ -147,6 +149,7 @@ authService.subscribe((user, reason) => {
   if (user) {
     researchStorage.syncProviderFromAuthUser(user)
   } else {
+    clearCachedCloudTokens()
     researchStorage.resetProviderWhenUnauthenticated(null)
   }
 })

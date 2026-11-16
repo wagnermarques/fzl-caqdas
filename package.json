@@ -1,6 +1,6 @@
 {
   "name": "fzl-caqdas",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "type": "module",
   "description": "Qualitative Research Assistant (CAQDAS) built with Lit, Web Components, and FZL AppShell",

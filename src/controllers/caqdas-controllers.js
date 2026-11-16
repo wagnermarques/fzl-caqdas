@@ -17,6 +17,16 @@ import {
 } from '@fzl/webcomponents-lit/controllers'
 import { researchStorage } from '../services/storage-service.js'
 
+const DRIVE_SESSION_TOKEN_KEY = 'fzl-caqdas:drive-session-token'
+
+export function clearCachedCloudTokens() {
+  try {
+    sessionStorage.removeItem(DRIVE_SESSION_TOKEN_KEY)
+  } catch {
+    // Ignore storage unavailability
+  }
+}
+
 /**
  * Controller especializado para envio e sincronização de documentos do Corpus
  * com a nuvem pessoal do pesquisador (Google Docs / Google Drive e OneDrive).
@@ -37,6 +47,7 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
       },
       ...options
     })
+    this._runtimeCloudTokens = new Map()
   }
 
   get currentUser() {
@@ -45,6 +56,163 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
 
   get isAuthenticated() {
     return Boolean(this.currentUser)
+  }
+
+  _getSessionCachedToken(provider, email = '') {
+    const cacheKey = `${provider}:${email || ''}`
+    const mem = this._runtimeCloudTokens.get(cacheKey)
+    if (mem && mem.expiresAt > Date.now() + 60_000) {
+      return mem.token
+    }
+    try {
+      const raw = sessionStorage.getItem(DRIVE_SESSION_TOKEN_KEY)
+      if (!raw) return ''
+      const parsed = JSON.parse(raw)
+      if (
+        parsed &&
+        parsed.key === cacheKey &&
+        parsed.token &&
+        Number(parsed.expiresAt || 0) > Date.now() + 60_000
+      ) {
+        this._runtimeCloudTokens.set(cacheKey, parsed)
+        return parsed.token
+      }
+    } catch {
+      // Ignore parse errors
+    }
+    return ''
+  }
+
+  _saveSessionCachedToken(provider, email = '', token = '', expiresInSec = 3500) {
+    if (!token) return
+    const cacheKey = `${provider}:${email || ''}`
+    const ttlMs = Math.max(120, Number(expiresInSec) || 3500) * 1000
+    const entry = {
+      key: cacheKey,
+      token,
+      expiresAt: Date.now() + ttlMs
+    }
+    this._runtimeCloudTokens.set(cacheKey, entry)
+    try {
+      sessionStorage.setItem(DRIVE_SESSION_TOKEN_KEY, JSON.stringify(entry))
+    } catch {
+      // Ignore storage quota errors
+    }
+  }
+
+  _invalidateCloudTokens(provider = null, email = '') {
+    if (!provider) {
+      this._runtimeCloudTokens.clear()
+      clearCachedCloudTokens()
+    } else {
+      const prefix = `${provider}:`
+      for (const k of Array.from(this._runtimeCloudTokens.keys())) {
+        if (k.startsWith(prefix)) this._runtimeCloudTokens.delete(k)
+      }
+      try {
+        const raw = sessionStorage.getItem(DRIVE_SESSION_TOKEN_KEY)
+        const parsed = raw ? JSON.parse(raw) : null
+        if (parsed?.key === `${provider}:${email || ''}` || parsed?.key?.startsWith(prefix)) {
+          clearCachedCloudTokens()
+        }
+      } catch {
+        clearCachedCloudTokens()
+      }
+    }
+    if (!this.authController.currentUser && this.authController.accessToken) {
+      this.authController.logout()
+    }
+  }
+
+  async _inspectGoogleToken(token) {
+    if (!token) return { valid: false, hasDriveScope: false, expiresIn: 0 }
+    try {
+      const res = await fetch(
+        `https://www.googleapis.com/oauth2/v3/tokeninfo?access_token=${encodeURIComponent(token)}`
+      )
+      if (!res.ok) {
+        return { valid: false, hasDriveScope: false, expiresIn: 0 }
+      }
+      const data = await res.json()
+      const scopeStr = String(data?.scope || '')
+      const hasDriveScope = scopeStr
+        .split(/\s+/)
+        .some((s) => s === 'https://www.googleapis.com/auth/drive' || s.startsWith('https://www.googleapis.com/auth/drive.'))
+      return {
+        valid: true,
+        hasDriveScope,
+        expiresIn: Number(data?.expires_in || 3500)
+      }
+    } catch {
+      return { valid: true, hasDriveScope: null, expiresIn: 3500 }
+    }
+  }
+
+  _parseGoogleApiError(status, rawText = '') {
+    let parsed = null
+    const text = String(rawText || '')
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      const braceIdx = text.indexOf('{')
+      if (braceIdx !== -1) {
+        try {
+          parsed = JSON.parse(text.slice(braceIdx))
+        } catch {
+          parsed = null
+        }
+      }
+    }
+
+    const errObj = parsed?.error || {}
+    const reasons = [
+      ...(Array.isArray(errObj.errors) ? errObj.errors.map((e) => e?.reason) : []),
+      ...(Array.isArray(errObj.details) ? errObj.details.map((d) => d?.reason) : []),
+      errObj.status
+    ]
+      .filter(Boolean)
+      .map((r) => String(r))
+
+    const apiMessage = String(errObj.message || text || '')
+    const code = Number(errObj.code || status || 0)
+
+    const isInsufficientScope =
+      code === 401 ||
+      reasons.some((r) => r === 'insufficientPermissions' || r === 'ACCESS_TOKEN_SCOPE_INSUFFICIENT' || r === 'authError') ||
+      /insufficient.*(permission|scope)|ACCESS_TOKEN_SCOPE_INSUFFICIENT|Invalid Credentials/i.test(apiMessage)
+
+    const isApiDisabled =
+      reasons.some((r) => r === 'accessNotConfigured' || r === 'SERVICE_DISABLED') ||
+      /has not been used in project|Drive API.*disabled|Enable it by visiting/i.test(apiMessage)
+
+    return {
+      status: code,
+      reasons,
+      message: apiMessage,
+      isInsufficientScope,
+      isApiDisabled
+    }
+  }
+
+  _createDriveApiError(errInfo, provider = 'google-drive') {
+    const err = new Error(this._formatCloudError(provider, errInfo, errInfo?.message))
+    err.isDriveScopeError = Boolean(errInfo?.isInsufficientScope)
+    err.isApiDisabled = Boolean(errInfo?.isApiDisabled)
+    err.status = errInfo?.status || 403
+    return err
+  }
+
+  _formatCloudError(provider, errInfo, fallbackText = '') {
+    if (provider === 'google-drive') {
+      if (errInfo?.isApiDisabled) {
+        return 'A Google Drive API não está ativada no projeto Google Cloud deste Client ID (erro 403 accessNotConfigured). Ative a "Google Drive API" no Google Cloud Console ou informe outro Client ID / token OAuth em Persistência & Nuvem.'
+      }
+      if (errInfo?.isInsufficientScope) {
+        return 'Sua sessão Google atual não possui permissão de escrita no Google Drive (escopo drive.file). Autorize o acesso ao Google Drive no popup de permissão ou reconecte sua conta.'
+      }
+    }
+    const cleanMsg = errInfo?.message || fallbackText || 'Erro desconhecido na nuvem.'
+    return cleanMsg
   }
 
   /**
@@ -67,32 +235,74 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
   }
 
   /**
-   * Resolve um token OAuth2 válido para Google Drive ou Microsoft OneDrive,
-   * priorizando tokens configurados manualmente, token social da sessão do AppShell
-   * e fallback sob demanda via FzlSocialAuthController.
+   * Resolve um token OAuth2 válido com escopo de escrita em nuvem (Google Drive / OneDrive),
+   * validando escopo de sessões anteriores do AppShell e solicitando autorização OAuth2
+   * com escopo `drive.file` quando necessário.
    */
-  async resolveCloudAccessToken(provider) {
+  async resolveCloudAccessToken(provider, { forceRefresh = false } = {}) {
     const cloudCfg = this._syncInternalAuthConfig()
     const appUser = authService.getCurrentUser?.()
+    const userEmail = appUser?.email || ''
     const storedAppToken = typeof authService.getAccessToken === 'function' ? await authService.getAccessToken() : ''
     const isJwtCredential = typeof storedAppToken === 'string' && storedAppToken.split('.').length === 3
 
     if (provider === 'google-drive' || provider === 'google') {
-      if (cloudCfg.googleAuthToken) return cloudCfg.googleAuthToken
-      if (appUser?.provider === 'google') {
-        if (appUser.socialAccessToken) return appUser.socialAccessToken
-        if (storedAppToken && !isJwtCredential) return storedAppToken
+      if (cloudCfg.googleAuthToken && !forceRefresh) return cloudCfg.googleAuthToken
+      if (forceRefresh) {
+        this._invalidateCloudTokens('google-drive', userEmail)
+      } else {
+        const cached = this._getSessionCachedToken('google-drive', userEmail)
+        if (cached) return cached
+
+        if (appUser?.provider === 'google') {
+          const candidate = appUser.socialAccessToken || (storedAppToken && !isJwtCredential ? storedAppToken : '')
+          if (candidate) {
+            const info = await this._inspectGoogleToken(candidate)
+            if (info.valid && info.hasDriveScope !== false) {
+              this._saveSessionCachedToken('google-drive', userEmail, candidate, info.expiresIn)
+              return candidate
+            }
+            console.info('[CAQDAS] Token Google da sessão sem escopo de Drive ou expirado; solicitando autorização drive.file...')
+          }
+        }
       }
-      return (await this.authController.requestCloudAccessToken('google')) || ''
+
+      if (this.authController.accessToken) {
+        this._invalidateCloudTokens('google-drive', userEmail)
+      }
+      const freshToken = (await this.authController.requestCloudAccessToken('google')) || ''
+      if (freshToken) {
+        const info = await this._inspectGoogleToken(freshToken)
+        if (!info.valid || info.hasDriveScope === false) {
+          throw new Error(
+            'A permissão de acesso ao Google Drive (escopo drive.file) não foi concedida na tela de consentimento do Google.'
+          )
+        }
+        this._saveSessionCachedToken('google-drive', userEmail, freshToken, info.expiresIn)
+      }
+      return freshToken
     }
 
     if (provider === 'onedrive' || provider === 'microsoft') {
-      if (cloudCfg.oneDriveAuthToken) return cloudCfg.oneDriveAuthToken
-      if (appUser?.provider === 'microsoft') {
-        if (appUser.socialAccessToken) return appUser.socialAccessToken
-        if (storedAppToken && !isJwtCredential) return storedAppToken
+      if (cloudCfg.oneDriveAuthToken && !forceRefresh) return cloudCfg.oneDriveAuthToken
+      if (forceRefresh) {
+        this._invalidateCloudTokens('onedrive', userEmail)
+      } else {
+        const cached = this._getSessionCachedToken('onedrive', userEmail)
+        if (cached) return cached
+        if (appUser?.provider === 'microsoft') {
+          const candidate = appUser.socialAccessToken || (storedAppToken && !isJwtCredential ? storedAppToken : '')
+          if (candidate) {
+            this._saveSessionCachedToken('onedrive', userEmail, candidate, 3500)
+            return candidate
+          }
+        }
       }
-      return (await this.authController.requestCloudAccessToken('microsoft')) || ''
+      const freshToken = (await this.authController.requestCloudAccessToken('microsoft')) || ''
+      if (freshToken) {
+        this._saveSessionCachedToken('onedrive', userEmail, freshToken, 3500)
+      }
+      return freshToken
     }
 
     return ''
@@ -110,46 +320,58 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
       if (cloudCfg.googleDriveFolderId) return cloudCfg.googleDriveFolderId
       if (!token) return ''
 
-      try {
-        const escapedName = homeDirName.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
-        const query = encodeURIComponent(
-          `name='${escapedName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`
-        )
-        const searchRes = await fetch(
-          `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)&pageSize=1`,
-          {
-            headers: { Authorization: `Bearer ${token}` }
-          }
-        )
-        if (searchRes.ok) {
-          const searchData = await searchRes.json()
-          const foundId = searchData?.files?.[0]?.id
-          if (foundId) {
-            researchStorage.saveCloudSyncConfig({ googleDriveFolderId: foundId })
-            return foundId
-          }
+      const escapedName = homeDirName.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+      const query = encodeURIComponent(
+        `name='${escapedName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`
+      )
+      const searchRes = await fetch(
+        `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)&pageSize=1`,
+        {
+          headers: { Authorization: `Bearer ${token}` }
         }
+      )
 
-        const createRes = await fetch('https://www.googleapis.com/drive/v3/files?fields=id,name', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            name: homeDirName,
-            mimeType: 'application/vnd.google-apps.folder'
-          })
-        })
-        if (createRes.ok) {
-          const created = await createRes.json()
-          if (created?.id) {
-            researchStorage.saveCloudSyncConfig({ googleDriveFolderId: created.id })
-            return created.id
-          }
+      if (searchRes.ok) {
+        const searchData = await searchRes.json()
+        const foundId = searchData?.files?.[0]?.id
+        if (foundId) {
+          researchStorage.saveCloudSyncConfig({ googleDriveFolderId: foundId })
+          return foundId
         }
-      } catch (err) {
-        console.warn('[CAQDAS] Não foi possível localizar/criar a pasta no Google Drive:', err)
+      } else {
+        const errText = await searchRes.text()
+        const errInfo = this._parseGoogleApiError(searchRes.status, errText)
+        if (searchRes.status === 401 || searchRes.status === 403) {
+          throw this._createDriveApiError(errInfo, 'google-drive')
+        }
+        console.warn('[CAQDAS] Consulta à pasta no Google Drive retornou erro:', searchRes.status, errText)
+        return ''
+      }
+
+      const createRes = await fetch('https://www.googleapis.com/drive/v3/files?fields=id,name', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          name: homeDirName,
+          mimeType: 'application/vnd.google-apps.folder'
+        })
+      })
+      if (createRes.ok) {
+        const created = await createRes.json()
+        if (created?.id) {
+          researchStorage.saveCloudSyncConfig({ googleDriveFolderId: created.id })
+          return created.id
+        }
+      } else {
+        const errText = await createRes.text()
+        const errInfo = this._parseGoogleApiError(createRes.status, errText)
+        if (createRes.status === 401 || createRes.status === 403) {
+          throw this._createDriveApiError(errInfo, 'google-drive')
+        }
+        console.warn('[CAQDAS] Criação da pasta no Google Drive falhou:', createRes.status, errText)
       }
       return ''
     }
@@ -158,42 +380,44 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
       if (cloudCfg.oneDriveFolderId) return cloudCfg.oneDriveFolderId
       if (!token) return ''
 
-      try {
-        const encodedDir = encodeURIComponent(homeDirName)
-        const lookupRes = await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:/${encodedDir}?$select=id,name`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-        if (lookupRes.ok) {
-          const existing = await lookupRes.json()
-          if (existing?.id) {
-            researchStorage.saveCloudSyncConfig({ oneDriveFolderId: existing.id })
-            return existing.id
-          }
+      const encodedDir = encodeURIComponent(homeDirName)
+      const lookupRes = await fetch(`https://graph.microsoft.com/v1.0/me/drive/root:/${encodedDir}?$select=id,name`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      if (lookupRes.ok) {
+        const existing = await lookupRes.json()
+        if (existing?.id) {
+          researchStorage.saveCloudSyncConfig({ oneDriveFolderId: existing.id })
+          return existing.id
         }
-
-        if (lookupRes.status === 404) {
-          const createRes = await fetch('https://graph.microsoft.com/v1.0/me/drive/root/children', {
-            method: 'POST',
-            headers: {
-              Authorization: `Bearer ${token}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              name: homeDirName,
-              folder: {},
-              '@microsoft.graph.conflictBehavior': 'rename'
-            })
+      } else if (lookupRes.status === 404) {
+        const createRes = await fetch('https://graph.microsoft.com/v1.0/me/drive/root/children', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            name: homeDirName,
+            folder: {},
+            '@microsoft.graph.conflictBehavior': 'rename'
           })
-          if (createRes.ok) {
-            const created = await createRes.json()
-            if (created?.id) {
-              researchStorage.saveCloudSyncConfig({ oneDriveFolderId: created.id })
-              return created.id
-            }
+        })
+        if (createRes.ok) {
+          const created = await createRes.json()
+          if (created?.id) {
+            researchStorage.saveCloudSyncConfig({ oneDriveFolderId: created.id })
+            return created.id
           }
+        } else if (createRes.status === 401 || createRes.status === 403) {
+          const err = new Error('Permissão insuficiente ou expirada para criar pasta no Microsoft OneDrive.')
+          err.isDriveScopeError = true
+          throw err
         }
-      } catch (err) {
-        console.warn('[CAQDAS] Não foi possível localizar/criar a pasta no OneDrive:', err)
+      } else if (lookupRes.status === 401 || lookupRes.status === 403) {
+        const err = new Error('Permissão insuficiente ou expirada para acessar o Microsoft OneDrive.')
+        err.isDriveScopeError = true
+        throw err
       }
       return ''
     }
@@ -216,18 +440,36 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
     const homeDirName = researchStorage.getHomeDirName()
     const user = this.currentUser
     const isAuthenticated = researchStorage.isCloudAuthenticated(user)
+    if (!isAuthenticated) {
+      this._invalidateCloudTokens(null, '')
+    }
     const rawProvider = isAuthenticated ? (cloudCfg.provider || 'local') : 'local'
     const effectiveProvider = rawProvider === 'local' ? 'rest' : rawProvider
     const allowCloudUpload = isAuthenticated && (rawProvider === 'google-drive' || rawProvider === 'onedrive')
 
     const googleTokenProvider = allowCloudUpload
       ? async () => {
-          const token = await this.resolveCloudAccessToken('google-drive')
+          let token = await this.resolveCloudAccessToken('google-drive')
           if (token && !researchStorage.getCloudSyncConfig().googleDriveFolderId) {
-            const folderId = await this.ensureCloudHomeFolderId('google-drive', token)
-            if (folderId) {
-              if (fileManager) fileManager.googleDriveFolderId = folderId
-              if (documentPicker) documentPicker.googleDriveFolderId = folderId
+            try {
+              const folderId = await this.ensureCloudHomeFolderId('google-drive', token)
+              if (folderId) {
+                if (fileManager) fileManager.googleDriveFolderId = folderId
+                if (documentPicker) documentPicker.googleDriveFolderId = folderId
+              }
+            } catch (err) {
+              if (err?.isDriveScopeError && !researchStorage.getCloudSyncConfig().googleAuthToken) {
+                token = await this.resolveCloudAccessToken('google-drive', { forceRefresh: true })
+                if (token) {
+                  const folderId = await this.ensureCloudHomeFolderId('google-drive', token)
+                  if (folderId) {
+                    if (fileManager) fileManager.googleDriveFolderId = folderId
+                    if (documentPicker) documentPicker.googleDriveFolderId = folderId
+                  }
+                }
+              } else {
+                throw err
+              }
             }
           }
           return token
@@ -300,7 +542,8 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
   /**
    * Sobrescreve o envio à nuvem pessoal para suportar a sessão do AppShell (authService)
    * e o provedor de persistência selecionado (Google Drive ou OneDrive), garantindo
-   * a resolução automática da pasta inicial configurada (APP-CADDAS-HOME-DIR).
+   * validação de escopo Drive, recuperação automática de 401/403 por escopo insuficiente
+   * e resolução da pasta inicial configurada (APP-CADDAS-HOME-DIR).
    */
   async uploadToPersonalCloud(file, options = {}) {
     const cloudCfg = this._syncInternalAuthConfig()
@@ -314,44 +557,89 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
       cloudCfg.provider === 'onedrive' ||
       (cloudCfg.provider !== 'google-drive' && user?.provider === 'microsoft')
     const targetCloud = useOneDrive ? 'onedrive' : 'google-drive'
-    const token = await this.resolveCloudAccessToken(targetCloud)
+    const hasManualToken = useOneDrive ? Boolean(cloudCfg.oneDriveAuthToken) : Boolean(cloudCfg.googleAuthToken)
 
-    if (!token) {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      let token = ''
+      try {
+        token = await this.resolveCloudAccessToken(targetCloud, { forceRefresh: attempt > 0 })
+      } catch (err) {
+        return {
+          success: false,
+          provider: targetCloud,
+          error: err?.message || `Falha na autenticação ${useOneDrive ? 'Microsoft OneDrive' : 'Google Drive'}.`
+        }
+      }
+
+      if (!token) {
+        return {
+          success: false,
+          provider: targetCloud,
+          error: `Autenticação ${useOneDrive ? 'Microsoft OneDrive' : 'Google Drive'} necessária para enviar o documento.`
+        }
+      }
+
+      let resolvedFolderId = options.folderId || ''
+      if (!resolvedFolderId) {
+        try {
+          resolvedFolderId = await this.ensureCloudHomeFolderId(targetCloud, token)
+        } catch (err) {
+          if (attempt === 0 && err?.isDriveScopeError && !hasManualToken) {
+            this._invalidateCloudTokens(targetCloud, user?.email || '')
+            continue
+          }
+          return {
+            success: false,
+            provider: targetCloud,
+            error: err?.message || 'Não foi possível preparar a pasta de destino na nuvem.'
+          }
+        }
+      }
+
+      const overrideConfig =
+        targetCloud === 'google-drive'
+          ? {
+              provider: 'google-drive',
+              googleDriveConvertToDocs: options.convertToGoogleDocs ?? cloudCfg.googleDriveConvertToDocs ?? true,
+              googleDriveFolderId: resolvedFolderId || undefined,
+              googleAuthToken: token
+            }
+          : {
+              provider: 'onedrive',
+              oneDriveFolderId: resolvedFolderId || undefined,
+              oneDriveAuthToken: token
+            }
+
+      const result = await this.uploadFile(file, overrideConfig, options.context)
+
+      if (result.success) {
+        const effectiveUser = user || {
+          name: 'Pesquisador',
+          email: '',
+          provider: useOneDrive ? 'microsoft' : 'google'
+        }
+        await this.onPersonalDocUploaded(file, result, effectiveUser)
+        this.emitHostEvent('fzl-personal-cloud-uploaded', { file, result, user: effectiveUser })
+        return result
+      }
+
+      const errInfo = targetCloud === 'google-drive' ? this._parseGoogleApiError(null, result.error || '') : null
+      if (attempt === 0 && targetCloud === 'google-drive' && errInfo?.isInsufficientScope && !hasManualToken) {
+        this._invalidateCloudTokens('google-drive', user?.email || '')
+        continue
+      }
+
       return {
-        success: false,
-        provider: targetCloud,
-        error: `Autenticação ${useOneDrive ? 'Microsoft OneDrive' : 'Google Drive'} necessária para enviar o documento.`
+        ...result,
+        error: this._formatCloudError(targetCloud, errInfo, result.error)
       }
     }
 
-    const resolvedFolderId = options.folderId || (await this.ensureCloudHomeFolderId(targetCloud, token))
-    const overrideConfig =
-      targetCloud === 'google-drive'
-        ? {
-            provider: 'google-drive',
-            googleDriveConvertToDocs: options.convertToGoogleDocs ?? cloudCfg.googleDriveConvertToDocs ?? true,
-            googleDriveFolderId: resolvedFolderId || undefined,
-            googleAuthToken: token
-          }
-        : {
-            provider: 'onedrive',
-            oneDriveFolderId: resolvedFolderId || undefined,
-            oneDriveAuthToken: token
-          }
-
-    const result = await this.uploadFile(file, overrideConfig, options.context)
-
-    if (result.success) {
-      const effectiveUser = user || {
-        name: 'Pesquisador',
-        email: '',
-        provider: useOneDrive ? 'microsoft' : 'google'
-      }
-      await this.onPersonalDocUploaded(file, result, effectiveUser)
-      this.emitHostEvent('fzl-personal-cloud-uploaded', { file, result, user: effectiveUser })
+    return {
+      success: false,
+      provider: targetCloud,
+      error: 'Não foi possível concluir o envio para a nuvem.'
     }
-
-    return result
   }
 
   /**
