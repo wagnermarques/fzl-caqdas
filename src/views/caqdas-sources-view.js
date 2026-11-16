@@ -266,7 +266,10 @@ export class CaqdasSourcesView extends LitElement {
     this._unsubAuth = authService.subscribe((user) => {
       this.currentUser = user
       this.requestUpdate()
-      this.updateComplete.then(() => this._bindControllers())
+      this.updateComplete.then(() => {
+        this._bindControllers()
+        if (user) void this.cloudController.probeSessionDriveScope()
+      })
     })
 
     this._onDataChanged = () => this._loadDocs()
@@ -509,7 +512,7 @@ export class CaqdasSourcesView extends LitElement {
   _handleUploadSuccess(e) {
     const detail = e.detail || {}
     const doc = detail.document
-    const uploadResult = detail.uploadResult || {}
+    const uploadResult = detail.uploadResult || detail.response || {}
 
     if (doc) {
       const externalViewerUrl = uploadResult.externalViewerUrl || doc.externalViewerUrl || doc.googleDocsUrl
@@ -805,6 +808,7 @@ export class CaqdasSourcesView extends LitElement {
                 one-drive-auth-token=${allowCloudUpload ? (this.cloudConfig.oneDriveAuthToken || '') : ''}
                 @fzl-document-select=${this._handleDocumentSelect}
                 @fzl-document-upload-success=${this._handleUploadSuccess}
+                @fzl-document-upload-error=${this._handleFileUploadError}
                 @fzl-document-open-study=${(e) => {
                   this._handleDocumentSelect(e)
                   window.location.hash = '#/codificacao'

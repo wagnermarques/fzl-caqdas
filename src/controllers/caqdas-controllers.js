@@ -48,6 +48,22 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
       ...options
     })
     this._runtimeCloudTokens = new Map()
+    this._driveScopeProbe = new Map()
+    this._preloadGoogleGsi()
+  }
+
+  _preloadGoogleGsi() {
+    if (typeof document === 'undefined') return
+    const cfg = researchStorage.getCloudSyncConfig()
+    const socialCfg = authService.getSocialAuthConfig?.() || {}
+    if (!(cfg.googleClientId || socialCfg.googleClientId)) return
+    if (document.getElementById('fzl-google-gsi-sdk')) return
+    const script = document.createElement('script')
+    script.id = 'fzl-google-gsi-sdk'
+    script.src = 'https://accounts.google.com/gsi/client'
+    script.async = true
+    script.defer = true
+    document.head.appendChild(script)
   }
 
   get currentUser() {
@@ -103,12 +119,14 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
   _invalidateCloudTokens(provider = null, email = '') {
     if (!provider) {
       this._runtimeCloudTokens.clear()
+      this._driveScopeProbe.clear()
       clearCachedCloudTokens()
     } else {
       const prefix = `${provider}:`
       for (const k of Array.from(this._runtimeCloudTokens.keys())) {
         if (k.startsWith(prefix)) this._runtimeCloudTokens.delete(k)
       }
+      this._driveScopeProbe.clear()
       try {
         const raw = sessionStorage.getItem(DRIVE_SESSION_TOKEN_KEY)
         const parsed = raw ? JSON.parse(raw) : null
@@ -122,6 +140,99 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
     if (!this.authController.currentUser && this.authController.accessToken) {
       this.authController.logout()
     }
+  }
+
+  async _isZipBinaryFile(file) {
+    try {
+      if (!file || typeof file.slice !== 'function' || file.size < 4) return false
+      const buf = await file.slice(0, 4).arrayBuffer()
+      const bytes = new Uint8Array(buf)
+      return bytes[0] === 0x50 && bytes[1] === 0x4b
+    } catch {
+      return false
+    }
+  }
+
+  _isTextConvertibleForGoogleDocs(file) {
+    if (!file) return false
+    const name = String(file.name || '').toLowerCase()
+    const type = String(file.type || '').toLowerCase()
+    if (type.startsWith('text/')) return true
+    return /\.(txt|md|csv|rtf|html?|docx)$/i.test(name)
+  }
+
+  async _uploadPlainTextAsGoogleDoc(file, config) {
+    const token =
+      config.googleAuthToken || (config.googleTokenProvider ? await config.googleTokenProvider() : '')
+    if (!token) {
+      throw new Error('Google Drive OAuth2 access token is missing.')
+    }
+
+    const cleanName = String(file.name || 'Documento CAQDAS').replace(/\.(docx|txt|md)$/i, '') || 'Documento CAQDAS'
+    const metadata = {
+      name: cleanName,
+      mimeType: 'application/vnd.google-apps.document',
+      ...(config.googleDriveFolderId ? { parents: [config.googleDriveFolderId] } : {})
+    }
+
+    const boundary = `-------FzlDocsUpload${Date.now()}`
+    const textContent = await file.text()
+    const multipartBlob = new Blob(
+      [
+        `\r\n--${boundary}\r\n`,
+        'Content-Type: application/json; charset=UTF-8\r\n\r\n',
+        JSON.stringify(metadata),
+        `\r\n--${boundary}\r\n`,
+        'Content-Type: text/plain; charset=UTF-8\r\n\r\n',
+        textContent,
+        `\r\n--${boundary}--`
+      ],
+      { type: `multipart/related; boundary=${boundary}` }
+    )
+
+    const res = await fetch(
+      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,webViewLink,webContentLink',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': `multipart/related; boundary=${boundary}`
+        },
+        body: multipartBlob
+      }
+    )
+
+    if (!res.ok) {
+      const errorText = await res.text()
+      throw new Error(`Google Drive API error (${res.status}): ${errorText}`)
+    }
+
+    const data = await res.json()
+    const externalViewerUrl = data.webViewLink || `https://docs.google.com/document/d/${data.id}/edit`
+
+    return {
+      success: true,
+      provider: 'google-drive',
+      fileId: data.id,
+      fileUrl: data.webContentLink || externalViewerUrl,
+      externalViewerUrl,
+      externalViewerLabel: 'Abrir no Google Docs ↗',
+      response: data
+    }
+  }
+
+  /**
+   * Garante conversão nativa para Google Docs tanto de arquivos .docx reais quanto de
+   * transcrições em texto (.txt, .md ou documentos sintetizados do corpus).
+   */
+  async performUpload(file, config, context) {
+    if (config?.provider === 'google-drive' && config?.googleDriveConvertToDocs) {
+      const isRealZipDocx = await this._isZipBinaryFile(file)
+      if (!isRealZipDocx && this._isTextConvertibleForGoogleDocs(file)) {
+        return this._uploadPlainTextAsGoogleDoc(file, config)
+      }
+    }
+    return super.performUpload(file, config, context)
   }
 
   async _inspectGoogleToken(token) {
@@ -176,6 +287,20 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
     const apiMessage = String(errObj.message || text || '')
     const code = Number(errObj.code || status || 0)
 
+    let activationUrl = ''
+    if (Array.isArray(errObj.details)) {
+      for (const detail of errObj.details) {
+        if (detail?.metadata?.activationUrl) {
+          activationUrl = String(detail.metadata.activationUrl)
+          break
+        }
+        if (Array.isArray(detail?.links) && detail.links[0]?.url) {
+          activationUrl = String(detail.links[0].url)
+          break
+        }
+      }
+    }
+
     const isInsufficientScope =
       code === 401 ||
       reasons.some((r) => r === 'insufficientPermissions' || r === 'ACCESS_TOKEN_SCOPE_INSUFFICIENT' || r === 'authError') ||
@@ -189,6 +314,7 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
       status: code,
       reasons,
       message: apiMessage,
+      activationUrl,
       isInsufficientScope,
       isApiDisabled
     }
@@ -234,17 +360,149 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
     return cloudCfg
   }
 
+  async probeSessionDriveScope() {
+    const cloudCfg = researchStorage.getCloudSyncConfig()
+    if (cloudCfg.googleAuthToken) return { status: 'manual-token', hasDriveScope: true }
+    const appUser = authService.getCurrentUser?.()
+    if (!appUser) return { status: 'not-signed-in', hasDriveScope: false }
+    if (appUser.provider !== 'google') return { status: 'non-google', hasDriveScope: false }
+
+    const cached = this._getSessionCachedToken('google-drive', appUser.email || '')
+    if (cached) return { status: 'ready', hasDriveScope: true }
+
+    const candidate = appUser.socialAccessToken || ''
+    if (!candidate) {
+      this._driveScopeProbe.set(appUser.email || '', false)
+      return { status: 'needs-drive-scope', hasDriveScope: false }
+    }
+    if (this._driveScopeProbe.has(candidate)) {
+      const ok = this._driveScopeProbe.get(candidate)
+      return { status: ok ? 'ready' : 'needs-drive-scope', hasDriveScope: ok }
+    }
+
+    const info = await this._inspectGoogleToken(candidate)
+    const ok = Boolean(info.valid && info.hasDriveScope === true)
+    this._driveScopeProbe.set(candidate, ok)
+    if (ok) {
+      this._saveSessionCachedToken('google-drive', appUser.email || '', candidate, info.expiresIn)
+      return { status: 'ready', hasDriveScope: true }
+    }
+    return { status: 'needs-drive-scope', hasDriveScope: false }
+  }
+
+  /**
+   * Solicita autorização explícita de Google Drive (drive.file) diretamente a partir do gesto de clique.
+   */
+  async authorizeGoogleDrive() {
+    this._syncInternalAuthConfig()
+    const token = await this.resolveCloudAccessToken('google-drive', { forceRefresh: true })
+    if (!token) {
+      throw new Error('Não foi possível obter autorização OAuth2 para o Google Drive.')
+    }
+    return token
+  }
+
+  /**
+   * Executa diagnóstico completo da conexão com Google Drive / Docs (login, escopo e API no GCP).
+   */
+  async diagnoseGoogleDriveConnection() {
+    const cloudCfg = this._syncInternalAuthConfig()
+    const appUser = authService.getCurrentUser?.()
+    const email = appUser?.email || ''
+
+    if (!cloudCfg.googleAuthToken && !appUser) {
+      return {
+        step: 'no-auth',
+        hasDriveScope: false,
+        message: 'Nenhum usuário conectado. Faça login com Google para testar a integração com Google Docs.'
+      }
+    }
+
+    const candidateToken =
+      cloudCfg.googleAuthToken ||
+      this._getSessionCachedToken('google-drive', email) ||
+      (appUser?.provider === 'google' ? appUser.socialAccessToken || '' : '')
+
+    if (!candidateToken) {
+      return {
+        step: 'missing-scope',
+        email,
+        hasDriveScope: false,
+        message: 'Sessão sem Access Token do Google Drive. Clique em "Autorizar Google Drive" para conceder permissão.'
+      }
+    }
+
+    const tokenInfo = await this._inspectGoogleToken(candidateToken)
+    if (!tokenInfo.valid || tokenInfo.hasDriveScope === false) {
+      this._driveScopeProbe.set(candidateToken, false)
+      return {
+        step: 'missing-scope',
+        email,
+        hasDriveScope: false,
+        message: 'O token atual não possui o escopo drive.file (ou expirou). Clique em "Autorizar Google Drive".'
+      }
+    }
+
+    try {
+      const res = await fetch('https://www.googleapis.com/drive/v3/about?fields=user(displayName,emailAddress)', {
+        headers: { Authorization: `Bearer ${candidateToken}` }
+      })
+      if (res.ok) {
+        const data = await res.json()
+        this._saveSessionCachedToken('google-drive', email, candidateToken, tokenInfo.expiresIn)
+        return {
+          step: 'ok',
+          email: data?.user?.emailAddress || email,
+          driveUser: data?.user?.displayName || appUser?.name || '',
+          hasDriveScope: true,
+          message: `Google Drive API e permissão Google Docs ativas para ${data?.user?.emailAddress || email}.`
+        }
+      }
+
+      const rawErr = await res.text()
+      const errInfo = this._parseGoogleApiError(res.status, rawErr)
+      if (errInfo.isApiDisabled) {
+        return {
+          step: 'api-disabled',
+          email,
+          hasDriveScope: true,
+          activationUrl: errInfo.activationUrl || 'https://console.cloud.google.com/apis/library/drive.googleapis.com',
+          message: this._formatCloudError('google-drive', errInfo, rawErr)
+        }
+      }
+      if (errInfo.isInsufficientScope) {
+        this._driveScopeProbe.set(candidateToken, false)
+        return {
+          step: 'missing-scope',
+          email,
+          hasDriveScope: false,
+          message: this._formatCloudError('google-drive', errInfo, rawErr)
+        }
+      }
+      return {
+        step: 'error',
+        email,
+        hasDriveScope: Boolean(tokenInfo.hasDriveScope),
+        message: errInfo.message || `Erro HTTP ${res.status} ao consultar Google Drive API.`
+      }
+    } catch (err) {
+      return {
+        step: 'error',
+        email,
+        hasDriveScope: Boolean(tokenInfo.hasDriveScope),
+        message: `Falha de rede ao consultar Google Drive API: ${err?.message || err}`
+      }
+    }
+  }
+
   /**
    * Resolve um token OAuth2 válido com escopo de escrita em nuvem (Google Drive / OneDrive),
-   * validando escopo de sessões anteriores do AppShell e solicitando autorização OAuth2
-   * com escopo `drive.file` quando necessário.
+   * preservando o gesto do usuário quando um token de login antigo não possui escopo `drive.file`.
    */
   async resolveCloudAccessToken(provider, { forceRefresh = false } = {}) {
     const cloudCfg = this._syncInternalAuthConfig()
     const appUser = authService.getCurrentUser?.()
     const userEmail = appUser?.email || ''
-    const storedAppToken = typeof authService.getAccessToken === 'function' ? await authService.getAccessToken() : ''
-    const isJwtCredential = typeof storedAppToken === 'string' && storedAppToken.split('.').length === 3
 
     if (provider === 'google-drive' || provider === 'google') {
       if (cloudCfg.googleAuthToken && !forceRefresh) return cloudCfg.googleAuthToken
@@ -255,14 +513,19 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
         if (cached) return cached
 
         if (appUser?.provider === 'google') {
-          const candidate = appUser.socialAccessToken || (storedAppToken && !isJwtCredential ? storedAppToken : '')
-          if (candidate) {
+          const candidate = appUser.socialAccessToken || ''
+          const probedResult = candidate ? this._driveScopeProbe.get(candidate) : undefined
+          if (candidate && probedResult === true) {
+            return candidate
+          }
+          if (candidate && probedResult === undefined) {
             const info = await this._inspectGoogleToken(candidate)
-            if (info.valid && info.hasDriveScope !== false) {
+            const hasScope = Boolean(info.valid && info.hasDriveScope !== false)
+            this._driveScopeProbe.set(candidate, hasScope)
+            if (hasScope) {
               this._saveSessionCachedToken('google-drive', userEmail, candidate, info.expiresIn)
               return candidate
             }
-            console.info('[CAQDAS] Token Google da sessão sem escopo de Drive ou expirado; solicitando autorização drive.file...')
           }
         }
       }
@@ -278,10 +541,14 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
             'A permissão de acesso ao Google Drive (escopo drive.file) não foi concedida na tela de consentimento do Google.'
           )
         }
+        this._driveScopeProbe.set(freshToken, true)
         this._saveSessionCachedToken('google-drive', userEmail, freshToken, info.expiresIn)
       }
       return freshToken
     }
+
+    const storedAppToken = typeof authService.getAccessToken === 'function' ? await authService.getAccessToken() : ''
+    const isJwtCredential = typeof storedAppToken === 'string' && storedAppToken.split('.').length === 3
 
     if (provider === 'onedrive' || provider === 'microsoft') {
       if (cloudCfg.oneDriveAuthToken && !forceRefresh) return cloudCfg.oneDriveAuthToken
@@ -522,7 +789,39 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
         fileManager.currentFolder = `/${homeDirName}`
       }
       fileManager.uploadHandler = allowCloudUpload
-        ? undefined
+        ? async (managedFile) => {
+            const rawFile =
+              managedFile.file ||
+              new File(
+                [managedFile.textContent || managedFile.name || ''],
+                managedFile.name?.includes('.')
+                  ? managedFile.name
+                  : `${managedFile.name || 'documento'}${managedFile.extension || '.txt'}`,
+                {
+                  type:
+                    managedFile.extension === '.docx'
+                      ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                      : 'text/plain'
+                }
+              )
+            const result = await this.uploadToPersonalCloud(rawFile, {
+              convertToGoogleDocs: Boolean(cloudCfg.googleDriveConvertToDocs),
+              folderId: rawProvider === 'onedrive' ? cloudCfg.oneDriveFolderId : cloudCfg.googleDriveFolderId,
+              context: { docId: managedFile.id, folder: managedFile.folder }
+            })
+            if (!result.success) {
+              throw new Error(result.error || 'Falha ao sincronizar arquivo na nuvem.')
+            }
+            researchStorage.updateDocument(managedFile.id, {
+              status: 'synced',
+              storageProvider: result.provider,
+              externalViewerUrl: result.externalViewerUrl,
+              externalViewerLabel: result.externalViewerLabel,
+              googleDriveFileId: result.fileId,
+              syncedAt: Date.now()
+            })
+            return result
+          }
         : async () => {
             const msg = !isAuthenticated
               ? 'Você não está conectado. Faça login com Google ou Microsoft para enviar arquivos à nuvem.'
@@ -693,13 +992,10 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
    */
   async syncCorpusDocument(doc, options = {}) {
     const text = doc.content || doc.title || ''
-    const mime =
-      doc.extension === '.docx' || doc.type === 'docx'
-        ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-        : 'text/plain'
-
-    const fileName = doc.title.includes('.') ? doc.title : `${doc.title}.txt`
-    const file = new File([text], fileName, { type: mime })
+    const hasDotExtension = /\.[a-z0-9]{2,5}$/i.test(String(doc.title || ''))
+    const ext = doc.extension || (doc.type === 'docx' ? '.docx' : '.txt')
+    const fileName = hasDotExtension ? doc.title : `${doc.title}${ext}`
+    const file = new File([text], fileName, { type: 'text/plain; charset=UTF-8' })
 
     const result = await this.uploadToPersonalCloud(file, {
       convertToGoogleDocs: options.convertToGoogleDocs ?? true,

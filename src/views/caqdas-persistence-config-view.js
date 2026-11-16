@@ -200,13 +200,45 @@ export class CaqdasPersistenceConfigView extends LitElement {
     .btn-external-link:hover {
       background: #bae6fd;
     }
+
+    .diag-box {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.83rem;
+      line-height: 1.45;
+      border: 1px solid #cbd5e1;
+      background: #f8fafc;
+      color: #334155;
+    }
+
+    .diag-box.ok {
+      background: #ecfdf5;
+      border-color: #a7f3d0;
+      color: #065f46;
+    }
+
+    .diag-box.warn {
+      background: #fffbeb;
+      border-color: #fde68a;
+      color: #92400e;
+    }
+
+    .diag-box.error {
+      background: #fef2f2;
+      border-color: #fecaca;
+      color: #991b1b;
+    }
   `
 
   static properties = {
     documents: { state: true },
     currentUser: { state: true },
     cloudConfig: { state: true },
-    _syncingDocIds: { state: true }
+    _syncingDocIds: { state: true },
+    _driveScopeStatus: { state: true },
+    _driveDiagnostic: { state: true },
+    _checkingDrive: { state: true }
   }
 
   constructor() {
@@ -216,6 +248,9 @@ export class CaqdasPersistenceConfigView extends LitElement {
     this.cloudConfig = researchStorage.getCloudSyncConfig()
     this.cloudController = new CaqdasPersonalCloudDocsController(this)
     this._syncingDocIds = new Set()
+    this._driveScopeStatus = 'unknown'
+    this._driveDiagnostic = null
+    this._checkingDrive = false
   }
 
   connectedCallback() {
@@ -224,8 +259,12 @@ export class CaqdasPersistenceConfigView extends LitElement {
     this.cloudConfig = researchStorage.getCloudSyncConfig()
     this._unsubAuth = authService.subscribe((user) => {
       this.currentUser = user
+      this._driveDiagnostic = null
       this.requestUpdate()
-      this.updateComplete.then(() => this._bindControllers())
+      this.updateComplete.then(() => {
+        this._bindControllers()
+        void this._probeDriveAccess()
+      })
     })
     this._onDataChanged = () => {
       this.documents = researchStorage.getDocuments()
@@ -233,7 +272,10 @@ export class CaqdasPersistenceConfigView extends LitElement {
     this._onCloudChanged = (e) => {
       this.cloudConfig = e.detail || researchStorage.getCloudSyncConfig()
       this.requestUpdate()
-      this.updateComplete.then(() => this._bindControllers())
+      this.updateComplete.then(() => {
+        this._bindControllers()
+        void this._probeDriveAccess()
+      })
     }
     window.addEventListener('caqdas-data-changed', this._onDataChanged)
     window.addEventListener('caqdas-cloud-sync-changed', this._onCloudChanged)
@@ -299,7 +341,43 @@ export class CaqdasPersistenceConfigView extends LitElement {
   _handleSignOut() {
     authService.signOut()
     researchStorage.resetProviderWhenUnauthenticated(null)
+    this._driveScopeStatus = 'not-signed-in'
+    this._driveDiagnostic = null
     alert('Sessão encerrada.')
+  }
+
+  async _probeDriveAccess() {
+    const res = await this.cloudController.probeSessionDriveScope()
+    this._driveScopeStatus = res.status
+  }
+
+  async _handleAuthorizeGoogleDrive() {
+    this._checkingDrive = true
+    try {
+      await this.cloudController.authorizeGoogleDrive()
+      this._driveScopeStatus = 'ready'
+      const diag = await this.cloudController.diagnoseGoogleDriveConnection()
+      this._driveDiagnostic = diag
+    } catch (err) {
+      this._driveDiagnostic = {
+        step: 'error',
+        message: err?.message || 'Não foi possível autorizar o Google Drive.'
+      }
+    } finally {
+      this._checkingDrive = false
+    }
+  }
+
+  async _handleRunDriveDiagnostic() {
+    this._checkingDrive = true
+    try {
+      const diag = await this.cloudController.diagnoseGoogleDriveConnection()
+      this._driveDiagnostic = diag
+      if (diag.step === 'ok') this._driveScopeStatus = 'ready'
+      else if (diag.step === 'missing-scope') this._driveScopeStatus = 'needs-drive-scope'
+    } finally {
+      this._checkingDrive = false
+    }
   }
 
   async _syncDocViaController(doc) {
@@ -323,11 +401,25 @@ export class CaqdasPersistenceConfigView extends LitElement {
       if (result.success) {
         this.documents = researchStorage.getDocuments()
         const targetLabel = activeProvider === 'onedrive' ? 'OneDrive' : 'Google Docs'
+        this._driveDiagnostic = {
+          step: 'ok',
+          message: `Documento "${doc.title}" enviado com sucesso para o ${targetLabel}.`
+        }
         alert(`✔ Documento "${doc.title}" sincronizado com sucesso no ${targetLabel}!`)
       } else {
-        alert(`Não foi possível sincronizar na nuvem: ${result.error || 'Erro desconhecido'}`)
+        const msg = result.error || 'Erro desconhecido'
+        this._driveDiagnostic = {
+          step: /accessNotConfigured|Google Drive API/i.test(msg) ? 'api-disabled' : 'error',
+          activationUrl: 'https://console.cloud.google.com/apis/library/drive.googleapis.com',
+          message: msg
+        }
+        alert(`Não foi possível sincronizar na nuvem: ${msg}`)
       }
     } catch (err) {
+      this._driveDiagnostic = {
+        step: 'error',
+        message: err?.message || 'Erro ao sincronizar documento.'
+      }
       alert(`Erro ao sincronizar: ${err.message}`)
     } finally {
       this._setDocSyncing(doc.id, false)
@@ -490,12 +582,65 @@ export class CaqdasPersistenceConfigView extends LitElement {
                   </div>
                 </div>
 
-                <div style="display: flex; gap: 8px;">
+                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
                   <md-outlined-button @click=${this._handleSignOut}>
                     <md-icon slot="icon">logout</md-icon>
                     Desconectar
                   </md-outlined-button>
                   <md-text-button href="#/conta">Ver Minha Conta</md-text-button>
+                </div>
+
+                <div style="margin-top: 14px; padding-top: 12px; border-top: 1px solid #e2e8f0;">
+                  <div style="font-size: 0.82rem; font-weight: 600; color: #334155; margin-bottom: 8px;">
+                    Permissão &amp; Conexão Google Drive / Google Docs:
+                  </div>
+                  <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+                    ${this._driveScopeStatus === 'needs-drive-scope'
+                      ? html`
+                          <md-filled-button
+                            ?disabled=${this._checkingDrive}
+                            @click=${this._handleAuthorizeGoogleDrive}
+                          >
+                            <md-icon slot="icon">verified_user</md-icon>
+                            Autorizar Google Drive
+                          </md-filled-button>
+                        `
+                      : html`
+                          <md-outlined-button
+                            ?disabled=${this._checkingDrive}
+                            @click=${this._handleAuthorizeGoogleDrive}
+                          >
+                            <md-icon slot="icon">refresh</md-icon>
+                            Renovar Permissão Drive
+                          </md-outlined-button>
+                        `}
+                    <md-outlined-button
+                      ?disabled=${this._checkingDrive}
+                      @click=${this._handleRunDriveDiagnostic}
+                    >
+                      <md-icon slot="icon">network_check</md-icon>
+                      ${this._checkingDrive ? 'Testando...' : 'Testar Conexão Google Docs'}
+                    </md-outlined-button>
+                  </div>
+
+                  ${this._driveDiagnostic
+                    ? html`
+                        <div class="diag-box ${this._driveDiagnostic.step === 'ok' ? 'ok' : this._driveDiagnostic.step === 'missing-scope' ? 'warn' : 'error'}">
+                          <div><strong>${this._driveDiagnostic.step === 'ok' ? '✔ Conectado:' : '⚠️ Atenção:'}</strong> ${this._driveDiagnostic.message}</div>
+                          ${this._driveDiagnostic.step === 'api-disabled' && this._driveDiagnostic.activationUrl
+                            ? html`<div style="margin-top: 6px;">
+                                <a href=${this._driveDiagnostic.activationUrl} target="_blank" rel="noopener noreferrer" style="color: #0284c7; font-weight: 600;">
+                                  Ativar Google Drive API no Google Cloud Console ↗
+                                </a>
+                              </div>`
+                            : ''}
+                        </div>
+                      `
+                    : this._driveScopeStatus === 'ready' || this._driveScopeStatus === 'manual-token'
+                      ? html`<div class="diag-box ok">🟢 Escopo <code>drive.file</code> ativo nesta sessão. Clique em <em>Testar Conexão Google Docs</em> para validar a API do Google Cloud.</div>`
+                      : this._driveScopeStatus === 'needs-drive-scope'
+                        ? html`<div class="diag-box warn">🟠 Sua sessão atual ainda não concedeu permissão ao Google Drive (<code>drive.file</code>). Clique em <strong>Autorizar Google Drive</strong> acima.</div>`
+                        : ''}
                 </div>
               `
             : html`
@@ -680,9 +825,9 @@ export class CaqdasPersistenceConfigView extends LitElement {
               }}
             />
             <span>
-              <strong>Converter .docx em Google Docs nativo</strong>
+              <strong>Converter documentos (.docx / transcrições) em Google Docs nativo</strong>
               <div style="font-size: 0.78rem; color: #64748b;">
-                Permite abrir e editar o documento diretamente no Google Docs.
+                Permite abrir e editar entrevistas e documentos diretamente no Google Docs.
               </div>
             </span>
           </label>
@@ -747,7 +892,8 @@ export class CaqdasPersistenceConfigView extends LitElement {
                   <li><code>http://localhost:5173</code></li>
                 </ul>
               </li>
-              <li>Em <strong>APIs e Serviços</strong>, ative a <strong>Google Drive API</strong>.</li>
+              <li>Em <strong>APIs e Serviços &gt; Biblioteca</strong>, ative a <strong>Google Drive API</strong> (obrigatório para criar pasta e enviar para o Google Docs sem erro 403).</li>
+              <li>Em <strong>Público-alvo (Consentimento)</strong>, adicione usuários de teste ou clique em <strong>Publicar aplicativo</strong> (o escopo <code>drive.file</code> é classificado pelo Google como <em>não sensível</em>).</li>
               <li>Copie o <strong>Client ID</strong> e cole em <em>Google Cloud Client ID</em> acima.</li>
             </ol>
           </div>
