@@ -27,17 +27,17 @@ function formatDuration(totalSeconds) {
  *  - "meeting": mistura o áudio de uma aba/tela compartilhada (reunião online)
  *    com o microfone local, para capturar todos os participantes.
  *
- * Emite `fzl-capture-audio` com detail.audio = { blob, mimeType, durationSeconds, timestamp, mode, label }.
+ * Também permite selecionar um arquivo de áudio já existente no dispositivo (mode = "import").
+ *
+ * Emite `fzl-capture-audio` com detail.audio = { blob, mimeType, durationSeconds, timestamp, mode, fileName? }.
  */
 export class CaqdasAudioRecorder extends LitElement {
   static properties = {
     mode: { type: String },
-    label: { type: String },
     _state: { state: true },
     _elapsed: { state: true },
     _error: { state: true },
-    _level: { state: true },
-    _lastUrl: { state: true }
+    _level: { state: true }
   }
 
   static styles = css`
@@ -84,18 +84,8 @@ export class CaqdasAudioRecorder extends LitElement {
       color: #4b5b5b;
       line-height: 1.4;
     }
-    label.field {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-      font-size: 0.85rem;
-      color: #333;
-    }
-    label.field input {
-      padding: 8px 10px;
-      border-radius: 8px;
-      border: 1px solid #b6cfcf;
-      font: inherit;
+    .import-input {
+      display: none;
     }
     .status-row {
       display: flex;
@@ -149,20 +139,15 @@ export class CaqdasAudioRecorder extends LitElement {
       color: #b3261e;
       font-size: 0.85rem;
     }
-    audio {
-      width: 100%;
-    }
   `
 
   constructor() {
     super()
     this.mode = 'microphone'
-    this.label = ''
     this._state = 'idle'
     this._elapsed = 0
     this._error = ''
     this._level = 0
-    this._lastUrl = ''
     this._chunks = []
     this._streams = []
     this._recorder = null
@@ -177,7 +162,6 @@ export class CaqdasAudioRecorder extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback()
     if (this._state !== 'idle') this._stop({ discard: false })
-    if (this._lastUrl) URL.revokeObjectURL(this._lastUrl)
   }
 
   get _supported() {
@@ -288,27 +272,43 @@ export class CaqdasAudioRecorder extends LitElement {
     this._elapsed = 0
 
     if (discard || blob.size === 0) return
+    this._emitAudio({ blob, mimeType, durationSeconds, timestamp: Date.now(), mode: this.mode })
+  }
 
-    if (this._lastUrl) URL.revokeObjectURL(this._lastUrl)
-    this._lastUrl = URL.createObjectURL(blob)
-
+  _emitAudio(audio) {
     this.dispatchEvent(
-      new CustomEvent('fzl-capture-audio', {
-        bubbles: true,
-        composed: true,
-        detail: {
-          audio: {
-            blob,
-            mimeType,
-            durationSeconds,
-            timestamp: Date.now(),
-            mode: this.mode,
-            label: this.label.trim()
-          }
-        }
-      })
+      new CustomEvent('fzl-capture-audio', { bubbles: true, composed: true, detail: { audio } })
     )
-    this.label = ''
+  }
+
+  async _handleImport(e) {
+    const input = e.target
+    const files = Array.from(input.files || [])
+    input.value = ''
+    for (const file of files) {
+      const durationSeconds = await new Promise((resolve) => {
+        const url = URL.createObjectURL(file)
+        const el = new Audio()
+        el.preload = 'metadata'
+        el.onloadedmetadata = () => {
+          URL.revokeObjectURL(url)
+          resolve(Number.isFinite(el.duration) ? Math.round(el.duration) : 0)
+        }
+        el.onerror = () => {
+          URL.revokeObjectURL(url)
+          resolve(0)
+        }
+        el.src = url
+      })
+      this._emitAudio({
+        blob: file,
+        mimeType: file.type || 'audio/webm',
+        durationSeconds,
+        timestamp: file.lastModified || Date.now(),
+        mode: 'import',
+        fileName: file.name
+      })
+    }
   }
 
   _startTicking() {
@@ -376,19 +376,6 @@ export class CaqdasAudioRecorder extends LitElement {
           Obtenha o consentimento dos participantes antes de gravar.
         </div>
 
-        <label class="field">
-          Identificação da gravação (opcional)
-          <input
-            type="text"
-            placeholder="Ex.: Entrevista P03 – grupo focal docentes"
-            .value=${this.label}
-            ?disabled=${!idle}
-            @input=${(e) => {
-              this.label = e.target.value
-            }}
-          />
-        </label>
-
         <div class="status-row">
           <span class="dot ${this._state}"></span>
           <span class="timer">${formatDuration(this._elapsed)}</span>
@@ -398,8 +385,12 @@ export class CaqdasAudioRecorder extends LitElement {
         <div class="actions">
           ${idle
             ? html`<md-filled-button @click=${this._start}>
-                <md-icon slot="icon">fiber_manual_record</md-icon>Iniciar gravação
-              </md-filled-button>`
+                  <md-icon slot="icon">fiber_manual_record</md-icon>Iniciar gravação
+              </md-filled-button>
+              <md-outlined-button @click=${() => this.renderRoot.querySelector('.import-input')?.click()}>
+                <md-icon slot="icon">audio_file</md-icon>Selecionar arquivo de áudio
+              </md-outlined-button>
+              <input class="import-input" type="file" accept="audio/*" multiple @change=${this._handleImport} />`
             : html`
                 ${this._state === 'recording'
                   ? html`<md-outlined-button @click=${this._pause}>
@@ -418,10 +409,6 @@ export class CaqdasAudioRecorder extends LitElement {
         </div>
 
         ${this._error ? html`<div class="error">${this._error}</div>` : ''}
-        ${this._lastUrl && idle
-          ? html`<div class="hint">Última gravação salva:</div>
-              <audio controls src=${this._lastUrl}></audio>`
-          : ''}
       </div>
     `
   }

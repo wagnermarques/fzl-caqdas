@@ -191,6 +191,103 @@ export class CaqdasSourcesView extends LitElement {
     .btn-external-link:hover {
       background: #bae6fd;
     }
+
+    .pending-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-top: 16px;
+      padding: 14px;
+      border: 1px dashed #f59e0b;
+      border-radius: 12px;
+      background: #fffbeb;
+    }
+
+    .pending-heading {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 600;
+      color: #92400e;
+    }
+
+    .pending-item {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      align-items: center;
+      padding: 10px;
+      border-radius: 10px;
+      background: #fff;
+      border: 1px solid #fde68a;
+    }
+
+    .pending-preview {
+      flex: 0 1 220px;
+      min-width: 0;
+    }
+
+    .pending-preview img,
+    .pending-preview video {
+      display: block;
+      width: 100%;
+      max-height: 160px;
+      object-fit: contain;
+      border-radius: 8px;
+      background: #000;
+    }
+
+    .pending-preview audio {
+      width: 100%;
+    }
+
+    .pending-form {
+      flex: 1 1 260px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      min-width: 0;
+    }
+
+    .pending-label {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.85rem;
+      color: #333;
+    }
+
+    .pending-name-wrap {
+      display: flex;
+      align-items: stretch;
+    }
+
+    .pending-name-input {
+      flex: 1;
+      min-width: 0;
+      padding: 8px 10px;
+      border: 1px solid #cbd5e1;
+      border-right: none;
+      border-radius: 8px 0 0 8px;
+      font: inherit;
+    }
+
+    .pending-ext {
+      display: inline-flex;
+      align-items: center;
+      padding: 0 10px;
+      border: 1px solid #cbd5e1;
+      border-radius: 0 8px 8px 0;
+      background: #f1f5f9;
+      color: #64748b;
+      font-size: 0.85rem;
+    }
+
+    .pending-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
   `
 
   static properties = {
@@ -206,6 +303,7 @@ export class CaqdasSourcesView extends LitElement {
     newFolder: { state: true },
     newContent: { state: true },
     selectedDocForReading: { state: true },
+    pendingCaptures: { state: true },
     _syncingDocIds: { state: true }
   }
 
@@ -225,6 +323,12 @@ export class CaqdasSourcesView extends LitElement {
     this.newFolder = researchStorage.formatPersistenceFolder('entrevistas')
     this.newContent = ''
     this.selectedDocForReading = null
+    this.pendingCaptures = []
+  }
+
+  disconnectedCallback() {
+    super.disconnectedCallback()
+    this.pendingCaptures.forEach((p) => p.previewUrl && URL.revokeObjectURL(p.previewUrl))
   }
 
   firstUpdated() {
@@ -524,22 +628,135 @@ export class CaqdasSourcesView extends LitElement {
     this.requestUpdate()
   }
 
+  /**
+   * Coloca uma captura (foto, vídeo ou áudio) numa fila para o pesquisador
+   * nomear o arquivo antes de gravá-lo no IndexedDB.
+   */
+  _queuePendingCapture({ blob, mime, ext, suggestedName, saveArgs }) {
+    const key = `pc-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    this.pendingCaptures = [
+      ...this.pendingCaptures,
+      { key, blob, mime, ext, name: suggestedName, previewUrl: URL.createObjectURL(blob), saveArgs }
+    ]
+    this.captureStatus = '✏️ Dê um nome ao arquivo e clique em "Salvar" para gravá-lo no dispositivo.'
+    void this.updateComplete.then(() => {
+      const inputs = this.shadowRoot?.querySelectorAll('.pending-name-input')
+      const last = inputs?.[inputs.length - 1]
+      last?.focus()
+      last?.select()
+    })
+  }
+
+  _sanitizeFileName(raw) {
+    return String(raw || '')
+      .trim()
+      .replace(/[\\/:*?"<>|]+/g, '-')
+      .replace(/\s+/g, ' ')
+      .slice(0, 120)
+  }
+
+  _updatePendingName(key, name) {
+    this.pendingCaptures = this.pendingCaptures.map((p) => (p.key === key ? { ...p, name } : p))
+  }
+
+  _removePending(key) {
+    const item = this.pendingCaptures.find((p) => p.key === key)
+    if (item?.previewUrl) URL.revokeObjectURL(item.previewUrl)
+    this.pendingCaptures = this.pendingCaptures.filter((p) => p.key !== key)
+  }
+
+  _discardPendingCapture(key) {
+    this._removePending(key)
+    this.captureStatus = '🗑️ Captura descartada.'
+  }
+
+  async _confirmPendingCapture(key) {
+    const item = this.pendingCaptures.find((p) => p.key === key)
+    if (!item) return
+    let base = this._sanitizeFileName(item.name)
+    if (!base) {
+      this.captureStatus = '⚠️ Informe um nome para o arquivo antes de salvar.'
+      return
+    }
+    if (base.toLowerCase().endsWith(item.ext.toLowerCase())) base = base.slice(0, -item.ext.length)
+    let title = `${base}${item.ext}`
+    if (this.documents.some((d) => d.title === title)) {
+      title = `${base}-${new Date().toISOString().replace(/[:.]/g, '-')}${item.ext}`
+    }
+    const file = new File([item.blob], title, { type: item.mime })
+    this._removePending(key)
+    await this._saveMediaCaptureToCorpus({ ...item.saveArgs, file, title })
+  }
+
+  _renderPendingCaptures(mediaTypes) {
+    const items = this.pendingCaptures.filter((p) => mediaTypes.includes(p.saveArgs.mediaType))
+    if (items.length === 0) return ''
+    return html`
+      <div class="pending-list">
+        <div class="pending-heading">
+          <md-icon>drive_file_rename_outline</md-icon>
+          Nomeie ${items.length > 1 ? `os ${items.length} arquivos` : 'o arquivo'} antes de salvar no dispositivo
+        </div>
+        ${items.map(
+          (p) => html`
+            <div class="pending-item">
+              <div class="pending-preview">
+                ${p.saveArgs.mediaType === 'image'
+                  ? html`<img src=${p.previewUrl} alt="Pré-visualização da captura" />`
+                  : p.saveArgs.mediaType === 'video'
+                    ? html`<video src=${p.previewUrl} controls></video>`
+                    : html`<audio src=${p.previewUrl} controls></audio>`}
+              </div>
+              <div class="pending-form">
+                <label class="pending-label">
+                  Nome do arquivo
+                  <span class="pending-name-wrap">
+                    <input
+                      class="pending-name-input"
+                      type="text"
+                      .value=${p.name}
+                      @input=${(e) => this._updatePendingName(p.key, e.target.value)}
+                      @keydown=${(e) => {
+                        if (e.key === 'Enter') void this._confirmPendingCapture(p.key)
+                      }}
+                    />
+                    <span class="pending-ext">${p.ext}</span>
+                  </span>
+                </label>
+                <div class="pending-actions">
+                  <md-filled-button @click=${() => void this._confirmPendingCapture(p.key)}>
+                    <md-icon slot="icon">save</md-icon>Salvar
+                  </md-filled-button>
+                  <md-outlined-button @click=${() => this._discardPendingCapture(p.key)}>
+                    <md-icon slot="icon">delete</md-icon>Descartar
+                  </md-outlined-button>
+                </div>
+              </div>
+            </div>
+          `
+        )}
+      </div>
+    `
+  }
+
   async _handleCapturePhoto(e) {
     const photo = e.detail?.photo
     if (!photo?.blob) return
     const stamp = new Date(photo.timestamp || Date.now()).toISOString().replace(/[:.]/g, '-')
     const mime = photo.blob.type || 'image/jpeg'
     const ext = mime.includes('png') ? '.png' : mime.includes('webp') ? '.webp' : '.jpg'
-    const title = `foto-campo-${stamp}${ext}`
-    const file = new File([photo.blob], title, { type: mime })
     const homeDir = researchStorage.getHomeDirName()
     const effectiveProvider = researchStorage.getEffectivePersistenceProvider(this.currentUser)
 
-    await this._saveMediaCaptureToCorpus({
-      file,
-      title,
-      mediaType: 'image',
-      content: `Registro fotográfico de campo capturado via fzl-camera-capture (${photo.width || '?'}x${photo.height || '?'}, câmera: ${photo.facingMode || 'environment'}).\nPasta de persistência: /${homeDir}/capturas-camera\nPersistência efetiva no momento: ${getPersistenceProviderLabel(effectiveProvider)}`
+    this._queuePendingCapture({
+      blob: photo.blob,
+      mime,
+      ext,
+      suggestedName: `foto-campo-${stamp}`,
+      saveArgs: {
+        mediaType: 'image',
+        content: `Registro fotográfico de campo capturado via fzl-camera-capture (${photo.width || '?'}x${photo.height || '?'}, câmera: ${photo.facingMode || 'environment'}).\nPasta de persistência: /${homeDir}/capturas-camera\nPersistência efetiva no momento: ${getPersistenceProviderLabel(effectiveProvider)}`
+      }
     })
   }
 
@@ -549,16 +766,18 @@ export class CaqdasSourcesView extends LitElement {
     const stamp = new Date(video.timestamp || Date.now()).toISOString().replace(/[:.]/g, '-')
     const mime = video.mimeType || video.blob.type || 'video/webm'
     const ext = mime.includes('mp4') ? '.mp4' : '.webm'
-    const title = `video-campo-${stamp}${ext}`
-    const file = new File([video.blob], title, { type: mime })
     const homeDir = researchStorage.getHomeDirName()
     const effectiveProvider = researchStorage.getEffectivePersistenceProvider(this.currentUser)
 
-    await this._saveMediaCaptureToCorpus({
-      file,
-      title,
-      mediaType: 'video',
-      content: `Registro em vídeo de campo capturado via fzl-camera-capture (duração: ${video.durationSeconds || 0}s, formato: ${mime}).\nPasta de persistência: /${homeDir}/capturas-camera\nPersistência efetiva no momento: ${getPersistenceProviderLabel(effectiveProvider)}`
+    this._queuePendingCapture({
+      blob: video.blob,
+      mime,
+      ext,
+      suggestedName: `video-campo-${stamp}`,
+      saveArgs: {
+        mediaType: 'video',
+        content: `Registro em vídeo de campo capturado via fzl-camera-capture (duração: ${video.durationSeconds || 0}s, formato: ${mime}).\nPasta de persistência: /${homeDir}/capturas-camera\nPersistência efetiva no momento: ${getPersistenceProviderLabel(effectiveProvider)}`
+      }
     })
   }
 
@@ -567,29 +786,61 @@ export class CaqdasSourcesView extends LitElement {
     if (!audio?.blob) return
     const stamp = new Date(audio.timestamp || Date.now()).toISOString().replace(/[:.]/g, '-')
     const mime = audio.mimeType || audio.blob.type || 'audio/webm'
-    const ext = mime.includes('mp4') ? '.m4a' : mime.includes('ogg') ? '.ogg' : '.webm'
-    const kind = audio.mode === 'meeting' ? 'reuniao' : 'entrevista'
-    const slug = (audio.label || '')
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/[^a-zA-Z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .toLowerCase()
-      .slice(0, 60)
-    const title = `audio-${kind}-${slug ? `${slug}-` : ''}${stamp}${ext}`
-    const file = new File([audio.blob], title, { type: mime })
+    const importedName = audio.fileName || ''
+    const importedExt = importedName.includes('.') ? importedName.slice(importedName.lastIndexOf('.')) : ''
+    const ext =
+      importedExt || (mime.includes('mp4') ? '.m4a' : mime.includes('ogg') ? '.ogg' : mime.includes('mpeg') ? '.mp3' : '.webm')
+    const kind = audio.mode === 'meeting' ? 'reuniao' : audio.mode === 'import' ? 'importado' : 'entrevista'
+    const origin =
+      audio.mode === 'meeting'
+        ? 'reunião online: aba compartilhada + microfone'
+        : audio.mode === 'import'
+          ? `arquivo selecionado do dispositivo: ${importedName}`
+          : 'entrevista: microfone'
     const homeDir = researchStorage.getHomeDirName()
     const effectiveProvider = researchStorage.getEffectivePersistenceProvider(this.currentUser)
 
-    await this._saveMediaCaptureToCorpus({
-      file,
-      title,
-      mediaType: 'audio',
-      subfolder: 'capturas-audio',
-      source: 'caqdas-audio-recorder',
-      tags: ['audio', kind, 'transcricao-pendente'],
-      content: `Gravação de áudio (${audio.mode === 'meeting' ? 'reunião online: aba compartilhada + microfone' : 'entrevista: microfone'})${audio.label ? ` – ${audio.label}` : ''}.\nDuração: ${audio.durationSeconds || 0}s, formato: ${mime}.\nTranscrição: pendente.\nPasta de persistência: /${homeDir}/capturas-audio\nPersistência efetiva no momento: ${getPersistenceProviderLabel(effectiveProvider)}`
+    this._queuePendingCapture({
+      blob: audio.blob,
+      mime,
+      ext,
+      suggestedName: importedName ? importedName.slice(0, importedName.length - importedExt.length) : `audio-${kind}-${stamp}`,
+      saveArgs: {
+        mediaType: 'audio',
+        subfolder: 'capturas-audio',
+        source: 'caqdas-audio-recorder',
+        tags: ['audio', kind, 'transcricao-pendente'],
+        content: `Gravação de áudio (${origin}).\nDuração: ${audio.durationSeconds || 0}s, formato: ${mime}.\nTranscrição: pendente.\nPasta de persistência: /${homeDir}/capturas-audio\nPersistência efetiva no momento: ${getPersistenceProviderLabel(effectiveProvider)}`
+      }
     })
+  }
+
+  async _handleFileRename(e) {
+    const { file, previousName, newName } = e.detail || {}
+    const doc = file && this.documents.find((d) => d.id === file.id)
+    if (!doc || !newName) return
+
+    researchStorage.updateDocument(doc.id, { title: newName })
+    const binary = researchStorage.getBinaryFile(doc.id)
+    if (binary) {
+      await researchStorage.saveBinaryFile(doc.id, new File([binary], newName, { type: binary.type }))
+    }
+    if (this.selectedDocForReading?.id === doc.id) {
+      this.selectedDocForReading = { ...this.selectedDocForReading, title: newName }
+    }
+
+    const remoteId = doc.googleDriveFileId
+    const isRemote = remoteId && (doc.storageProvider === 'google-drive' || doc.storageProvider === 'onedrive')
+    if (isRemote) {
+      const result = await this.cloudController.renameCloudFile(doc.storageProvider, remoteId, newName)
+      if (!result.success) {
+        alert(
+          `"${previousName}" foi renomeado para "${newName}" neste dispositivo, mas não na nuvem (${result.error}). ` +
+            'Renomeie manualmente no ' + (doc.storageProvider === 'onedrive' ? 'OneDrive' : 'Google Drive') + ' se necessário.'
+        )
+      }
+    }
+    this._loadDocs()
   }
 
   _handleUploadSuccess(e) {
@@ -811,6 +1062,7 @@ export class CaqdasSourcesView extends LitElement {
                 }}
                 @fzl-file-read=${this._handleFileRead}
                 @fzl-file-delete=${this._handleFileDelete}
+                @fzl-file-rename=${this._handleFileRename}
                 @fzl-file-upload-success=${this._handleFileUploaded}
                 @fzl-file-uploaded=${this._handleFileUploaded}
                 @fzl-file-upload-error=${this._handleFileUploadError}
@@ -930,6 +1182,8 @@ export class CaqdasSourcesView extends LitElement {
                 @fzl-capture-video=${this._handleCaptureVideo}
               ></fzl-camera-capture>
 
+              ${this._renderPendingCaptures(['image', 'video'])}
+
               ${this.captureStatus
                 ? html`<div class="capture-status">${this.captureStatus}</div>`
                 : ''}
@@ -952,6 +1206,8 @@ export class CaqdasSourcesView extends LitElement {
               </div>
 
               <caqdas-audio-recorder @fzl-capture-audio=${this._handleCaptureAudio}></caqdas-audio-recorder>
+
+              ${this._renderPendingCaptures(['audio'])}
 
               ${this.captureStatus
                 ? html`<div class="capture-status">${this.captureStatus}</div>`

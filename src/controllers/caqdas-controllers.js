@@ -773,6 +773,38 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
    * validação de escopo Drive, recuperação automática de 401/403 por escopo insuficiente
    * e resolução da pasta inicial configurada (APP-CAQDAS-HOME-DIR).
    */
+  /**
+   * Renomeia um arquivo já sincronizado no Google Drive ou OneDrive.
+   * @returns {Promise<{ success: boolean, error?: string }>}
+   */
+  async renameCloudFile(provider, fileId, newName) {
+    if (!fileId || !newName) return { success: false, error: 'Arquivo remoto não identificado.' }
+    const isOneDrive = provider === 'onedrive'
+    const url = isOneDrive
+      ? `https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(fileId)}`
+      : `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?fields=id,name`
+
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const token = await this.resolveCloudAccessToken(isOneDrive ? 'onedrive' : 'google-drive', {
+          forceRefresh: attempt > 0
+        })
+        if (!token) return { success: false, error: 'Sem token de acesso à nuvem.' }
+        const res = await fetch(url, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: newName })
+        })
+        if (res.ok) return { success: true }
+        if (res.status === 401 && attempt === 0) continue
+        return { success: false, error: `HTTP ${res.status}` }
+      } catch (err) {
+        return { success: false, error: err?.message || String(err) }
+      }
+    }
+    return { success: false, error: 'Falha de autenticação.' }
+  }
+
   async uploadToPersonalCloud(file, options = {}) {
     const cloudCfg = this._syncInternalAuthConfig()
     const user = this.currentUser
