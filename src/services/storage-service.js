@@ -4,8 +4,11 @@ import { BARDIN_OPEN_ACCESS_SOURCES, INITIAL_STUDY_NOTES } from './bardin-theory
 const STORAGE_KEY = 'fzl_caqdas_research_data_v1'
 const STORAGE_THEORY_KEY = 'fzl_caqdas_theory_study_v1'
 const STORAGE_CLOUD_KEY = 'fzl_caqdas_cloud_sync_v1'
+const FILE_DB_NAME = 'fzl_caqdas_files_v1'
+const FILE_STORE_NAME = 'files'
 
-export const DEFAULT_HOME_DIR = 'APP-CADDAS-HOME-DIR'
+export const DEFAULT_HOME_DIR = 'APP-CAQDAS-HOME-DIR'
+const LEGACY_HOME_DIR = 'APP-CADDAS-HOME-DIR'
 
 const PROVIDER_LABELS = {
   'google-drive': 'Google Drive & Docs',
@@ -35,8 +38,185 @@ const DEFAULT_CLOUD_CONFIG = {
 
 class ResearchStorageService {
   constructor() {
+    this._binaryFiles = new Map()
+    this._objectUrls = new Map()
     this._data = this._loadData()
     this._theoryData = this._loadTheoryData()
+    void this._hydrateBinaryFiles()
+  }
+
+  _openFilesDb() {
+    if (typeof indexedDB === 'undefined') return Promise.resolve(null)
+    return new Promise((resolve) => {
+      try {
+        const req = indexedDB.open(FILE_DB_NAME, 1)
+        req.onupgradeneeded = () => {
+          const db = req.result
+          if (!db.objectStoreNames.contains(FILE_STORE_NAME)) {
+            db.createObjectStore(FILE_STORE_NAME, { keyPath: 'id' })
+          }
+        }
+        req.onsuccess = () => resolve(req.result)
+        req.onerror = () => resolve(null)
+      } catch {
+        resolve(null)
+      }
+    })
+  }
+
+  _cacheBinaryInMemory(docId, file) {
+    if (!docId || !file) return
+    const prevUrl = this._objectUrls.get(docId)
+    if (prevUrl && typeof URL?.revokeObjectURL === 'function') {
+      try {
+        URL.revokeObjectURL(prevUrl)
+      } catch {
+        // Ignore revoke failures
+      }
+      this._objectUrls.delete(docId)
+    }
+    this._binaryFiles.set(docId, file)
+  }
+
+  async saveBinaryFile(docId, file) {
+    if (!docId || !file) return
+    this._cacheBinaryInMemory(docId, file)
+    const db = await this._openFilesDb()
+    if (!db) return
+    await new Promise((resolve) => {
+      try {
+        const tx = db.transaction(FILE_STORE_NAME, 'readwrite')
+        tx.objectStore(FILE_STORE_NAME).put({
+          id: docId,
+          name: file.name || docId,
+          type: file.type || 'application/octet-stream',
+          lastModified: file.lastModified || Date.now(),
+          blob: file
+        })
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => resolve()
+      } catch {
+        resolve()
+      }
+    })
+  }
+
+  getBinaryFile(docId) {
+    return docId ? this._binaryFiles.get(docId) || null : null
+  }
+
+  getFileObjectUrl(docId) {
+    if (!docId) return ''
+    const existing = this._objectUrls.get(docId)
+    if (existing) return existing
+    const file = this._binaryFiles.get(docId)
+    if (!file || typeof URL?.createObjectURL !== 'function') return ''
+    const isPreviewable =
+      file.type === 'application/pdf' ||
+      String(file.type || '').startsWith('image/') ||
+      /\.(pdf|png|jpe?g|webp|gif)$/i.test(file.name || '')
+    if (!isPreviewable) return ''
+    try {
+      const url = URL.createObjectURL(file)
+      this._objectUrls.set(docId, url)
+      return url
+    } catch {
+      return ''
+    }
+  }
+
+  async getBinaryFileAsync(docId) {
+    if (!docId) return null
+    const cached = this._binaryFiles.get(docId)
+    if (cached) return cached
+
+    const db = await this._openFilesDb()
+    if (!db) return null
+    return new Promise((resolve) => {
+      try {
+        const tx = db.transaction(FILE_STORE_NAME, 'readonly')
+        const req = tx.objectStore(FILE_STORE_NAME).get(docId)
+        req.onsuccess = () => {
+          const rec = req.result
+          if (!rec?.blob) {
+            resolve(null)
+            return
+          }
+          const restored =
+            rec.blob instanceof File
+              ? rec.blob
+              : new File([rec.blob], rec.name || docId, {
+                  type: rec.type || 'application/octet-stream',
+                  lastModified: rec.lastModified || Date.now()
+                })
+          this._cacheBinaryInMemory(docId, restored)
+          resolve(restored)
+        }
+        req.onerror = () => resolve(null)
+      } catch {
+        resolve(null)
+      }
+    })
+  }
+
+  async deleteBinaryFile(docId) {
+    if (!docId) return
+    const prevUrl = this._objectUrls.get(docId)
+    if (prevUrl && typeof URL?.revokeObjectURL === 'function') {
+      try {
+        URL.revokeObjectURL(prevUrl)
+      } catch {
+        // Ignore revoke errors
+      }
+    }
+    this._objectUrls.delete(docId)
+    this._binaryFiles.delete(docId)
+
+    const db = await this._openFilesDb()
+    if (!db) return
+    await new Promise((resolve) => {
+      try {
+        const tx = db.transaction(FILE_STORE_NAME, 'readwrite')
+        tx.objectStore(FILE_STORE_NAME).delete(docId)
+        tx.oncomplete = () => resolve()
+        tx.onerror = () => resolve()
+      } catch {
+        resolve()
+      }
+    })
+  }
+
+  async _hydrateBinaryFiles() {
+    const db = await this._openFilesDb()
+    if (!db) return
+    const records = await new Promise((resolve) => {
+      try {
+        const tx = db.transaction(FILE_STORE_NAME, 'readonly')
+        const req = tx.objectStore(FILE_STORE_NAME).getAll()
+        req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : [])
+        req.onerror = () => resolve([])
+      } catch {
+        resolve([])
+      }
+    })
+
+    let loadedAny = false
+    for (const rec of records) {
+      if (!rec?.id || !rec?.blob || this._binaryFiles.has(rec.id)) continue
+      const restored =
+        rec.blob instanceof File
+          ? rec.blob
+          : new File([rec.blob], rec.name || rec.id, {
+              type: rec.type || 'application/octet-stream',
+              lastModified: rec.lastModified || Date.now()
+            })
+      this._cacheBinaryInMemory(rec.id, restored)
+      loadedAny = true
+    }
+
+    if (loadedAny && typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('caqdas-data-changed', { detail: this._data }))
+    }
   }
 
   _loadTheoryData() {
@@ -71,6 +251,10 @@ class ResearchStorageService {
           for (const doc of parsed.documents) {
             if (doc.status === 'synced' && !this.hasRemoteSync(doc)) {
               doc.status = 'local'
+              sanitized = true
+            }
+            if (typeof doc.folder === 'string' && doc.folder.includes(LEGACY_HOME_DIR)) {
+              doc.folder = doc.folder.replaceAll(LEGACY_HOME_DIR, DEFAULT_HOME_DIR)
               sanitized = true
             }
           }
@@ -149,7 +333,17 @@ class ResearchStorageService {
   getCloudSyncConfig() {
     try {
       const raw = localStorage.getItem(STORAGE_CLOUD_KEY)
-      if (raw) return { ...DEFAULT_CLOUD_CONFIG, ...JSON.parse(raw), googleDriveConvertToDocs: false }
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        const normalized = { ...DEFAULT_CLOUD_CONFIG, ...parsed, googleDriveConvertToDocs: false }
+        if (normalized.homeDirName === LEGACY_HOME_DIR) {
+          normalized.homeDirName = DEFAULT_HOME_DIR
+          normalized.googleDriveFolderId = ''
+          normalized.oneDriveFolderId = ''
+          localStorage.setItem(STORAGE_CLOUD_KEY, JSON.stringify(normalized))
+        }
+        return normalized
+      }
     } catch (e) {
       console.warn('Erro ao ler configuração de nuvem:', e)
     }
@@ -164,7 +358,7 @@ class ResearchStorageService {
   }
 
   /**
-   * Retorna o nome sanitizado da pasta inicial padrão de persistência (default: APP-CADDAS-HOME-DIR).
+   * Retorna o nome sanitizado da pasta inicial padrão de persistência (default: APP-CAQDAS-HOME-DIR).
    */
   getHomeDirName() {
     const cfg = this.getCloudSyncConfig()

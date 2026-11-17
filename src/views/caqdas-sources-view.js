@@ -329,11 +329,13 @@ export class CaqdasSourcesView extends LitElement {
       const folder = researchStorage.formatPersistenceFolder(
         doc.folder || (doc.type === 'interview' ? 'entrevistas' : 'documentos')
       )
+      const binaryFile = researchStorage.getBinaryFile(doc.id)
+      const objectUrl = researchStorage.getFileObjectUrl(doc.id)
       return {
         id: doc.id,
         name: doc.title || 'Documento sem título',
         folder,
-        size: doc.size || (doc.content ? doc.content.length : 1024),
+        size: doc.size || binaryFile?.size || (doc.content ? doc.content.length : 1024),
         extension: ext,
         category: cat,
         status: researchStorage.getFileManagerStatus(doc, this._syncingDocIds),
@@ -344,6 +346,8 @@ export class CaqdasSourcesView extends LitElement {
         notes: `${statusLabel} | Participante: ${doc.participant || 'N/A'} | Excertos codificados: ${doc.quotations?.length || 0}`,
         textContent: doc.content || '',
         docxBlocks: doc.docxBlocks || undefined,
+        ...(binaryFile ? { file: binaryFile } : {}),
+        ...(objectUrl ? { objectUrl } : {}),
         externalViewerUrl: isSynced ? doc.externalViewerUrl : undefined,
         externalViewerLabel: isSynced
           ? doc.externalViewerLabel ||
@@ -364,16 +368,30 @@ export class CaqdasSourcesView extends LitElement {
     const activeProvider = researchStorage.getEffectivePersistenceProvider(this.currentUser)
     let addedCount = 0
     for (const d of docs) {
-      const existing = this.documents.find((existingDoc) => existingDoc.title === d.name)
-      if (existing) continue
+      const existing = this.documents.find((existingDoc) => existingDoc.id === d.id || existingDoc.title === d.name)
+      const remoteUrl = d.externalViewerUrl || d.googleDocsUrl || undefined
+      const isUploadedRemote = d.uploadStatus === 'uploaded' && Boolean(remoteUrl)
+      if (existing) {
+        if (d.file) {
+          void researchStorage.saveBinaryFile(existing.id, d.file)
+          researchStorage.updateDocument(existing.id, {
+            size: d.size || d.file.size,
+            status: isUploadedRemote ? 'synced' : 'local',
+            externalViewerUrl: isUploadedRemote ? remoteUrl : undefined,
+            googleDriveFileId: undefined,
+            syncedAt: isUploadedRemote ? Date.now() : undefined
+          })
+          addedCount++
+        }
+        continue
+      }
 
       const participantName = d.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ')
       const ext = d.extension || (d.name.endsWith('.docx') ? '.docx' : '.txt')
       const docType = ext === '.docx' ? 'docx' : ext === '.pdf' ? 'pdf' : 'interview'
-      const remoteUrl = d.externalViewerUrl || d.googleDocsUrl || undefined
-      const isUploadedRemote = d.uploadStatus === 'uploaded' && Boolean(remoteUrl)
 
-      researchStorage.addDocument({
+      const savedDoc = researchStorage.addDocument({
+        ...(d.id ? { id: d.id } : {}),
         title: d.name,
         participant: participantName,
         group: 'Corpus Importado',
@@ -394,6 +412,9 @@ export class CaqdasSourcesView extends LitElement {
         docxBlocks: d.docxBlocks || undefined,
         quotations: []
       })
+      if (d.file) {
+        void researchStorage.saveBinaryFile(savedDoc.id, d.file)
+      }
       addedCount++
     }
 
@@ -423,6 +444,7 @@ export class CaqdasSourcesView extends LitElement {
       content,
       quotations: []
     })
+    void researchStorage.saveBinaryFile(savedDoc.id, file)
 
     this.captureStatus = `💾 Captura "${title}" salva localmente em ${captureFolder}.`
 
@@ -511,18 +533,24 @@ export class CaqdasSourcesView extends LitElement {
     const uploadResult = detail.uploadResult || detail.response || {}
 
     if (doc) {
+      const targetDoc = this.documents.find((d) => d.id === doc.id || d.title === doc.name)
       const externalViewerUrl = uploadResult.externalViewerUrl || doc.externalViewerUrl || doc.googleDocsUrl
       const externalViewerLabel = uploadResult.externalViewerLabel || doc.externalViewerLabel || 'Abrir no Google Drive ↗'
 
-      researchStorage.updateDocument(doc.id, {
-        status: 'synced',
-        storageProvider: uploadResult.provider || researchStorage.getEffectivePersistenceProvider(this.currentUser),
-        externalViewerUrl,
-        externalViewerLabel,
-        googleDriveFileId: uploadResult.fileId || doc.googleDriveFileId,
-        syncedAt: Date.now()
-      })
-      this._loadDocs()
+      if (targetDoc) {
+        if (doc.file) {
+          void researchStorage.saveBinaryFile(targetDoc.id, doc.file)
+        }
+        researchStorage.updateDocument(targetDoc.id, {
+          status: 'synced',
+          storageProvider: uploadResult.provider || researchStorage.getEffectivePersistenceProvider(this.currentUser),
+          externalViewerUrl,
+          externalViewerLabel,
+          googleDriveFileId: uploadResult.fileId || doc.googleDriveFileId,
+          syncedAt: Date.now()
+        })
+        this._loadDocs()
+      }
     }
   }
 
@@ -564,6 +592,7 @@ export class CaqdasSourcesView extends LitElement {
     if (!file) return
     const confirmDel = confirm(`Deseja remover "${file.name}" do corpus da pesquisa?`)
     if (confirmDel) {
+      void researchStorage.deleteBinaryFile(file.id)
       this.documents = this.documents.filter((d) => d.id !== file.id)
       const data = researchStorage._data
       data.documents = this.documents

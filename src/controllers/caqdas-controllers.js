@@ -483,7 +483,7 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
   }
 
   /**
-   * Localiza ou cria automaticamente a pasta inicial configurada (padrão APP-CADDAS-HOME-DIR)
+   * Localiza ou cria automaticamente a pasta inicial configurada (padrão APP-CAQDAS-HOME-DIR)
    * no Google Drive ou no OneDrive e salva seu ID real nas configurações locais.
    */
   async ensureCloudHomeFolderId(provider, token) {
@@ -601,7 +601,7 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
 
   /**
    * Aplica automaticamente a configuração ativa de persistência (GDrive, OneDrive, Local ou REST)
-   * e a pasta padrão inicial (APP-CADDAS-HOME-DIR) nos 5 web components do fluxo.
+   * e a pasta padrão inicial (APP-CAQDAS-HOME-DIR) nos 5 web components do fluxo.
    */
   configurePersistenceComponents({
     fileManager,
@@ -697,20 +697,7 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
       }
       fileManager.uploadHandler = allowCloudUpload
         ? async (managedFile) => {
-            const rawFile =
-              managedFile.file ||
-              new File(
-                [managedFile.textContent || managedFile.name || ''],
-                managedFile.name?.includes('.')
-                  ? managedFile.name
-                  : `${managedFile.name || 'documento'}${managedFile.extension || '.txt'}`,
-                {
-                  type:
-                    managedFile.extension === '.docx'
-                      ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-                      : 'text/plain'
-                }
-              )
+            const rawFile = await this._resolveUploadFilePayload(managedFile)
             const result = await this.uploadToPersonalCloud(rawFile, {
               convertToGoogleDocs: false,
               folderId: rawProvider === 'onedrive' ? cloudCfg.oneDriveFolderId : cloudCfg.googleDriveFolderId,
@@ -746,10 +733,45 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
   }
 
   /**
+   * Resolve o objeto File real (priorizando o arquivo binário salvo no IndexedDB/memória)
+   * antes de recorrer a conteúdo textual, evitando o envio de stubs só com o nome do arquivo.
+   */
+  async _resolveUploadFilePayload(item) {
+    if (!item) {
+      throw new Error('Documento inválido para upload.')
+    }
+    if (item.file instanceof File || (item.file && typeof item.file.arrayBuffer === 'function')) {
+      return item.file
+    }
+    const storedFile = await researchStorage.getBinaryFileAsync(item.id)
+    if (storedFile) {
+      return storedFile
+    }
+
+    const title = String(item.title || item.name || 'documento')
+    const ext = String(
+      item.extension ||
+        (title.includes('.') ? title.slice(title.lastIndexOf('.')) : item.type === 'docx' ? '.docx' : '.txt')
+    ).toLowerCase()
+    const isBinaryFormat = ['.pdf', '.docx', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.webm', '.mp4'].includes(ext)
+    const text = typeof item.content === 'string' ? item.content : typeof item.textContent === 'string' ? item.textContent : ''
+
+    if (isBinaryFormat || !text.trim()) {
+      throw new Error(
+        `O arquivo original "${title}" não está em cache neste navegador. Reimporte o arquivo em Fontes > Upload & Importação para enviá-lo na íntegra.`
+      )
+    }
+
+    const hasDotExtension = /\.[a-z0-9]{2,5}$/i.test(title)
+    const fileName = hasDotExtension ? title : `${title}${ext || '.txt'}`
+    return new File([text], fileName, { type: 'text/plain; charset=UTF-8' })
+  }
+
+  /**
    * Sobrescreve o envio à nuvem pessoal para suportar a sessão do AppShell (authService)
    * e o provedor de persistência selecionado (Google Drive ou OneDrive), garantindo
    * validação de escopo Drive, recuperação automática de 401/403 por escopo insuficiente
-   * e resolução da pasta inicial configurada (APP-CADDAS-HOME-DIR).
+   * e resolução da pasta inicial configurada (APP-CAQDAS-HOME-DIR).
    */
   async uploadToPersonalCloud(file, options = {}) {
     const cloudCfg = this._syncInternalAuthConfig()
@@ -898,11 +920,17 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
    * com a nuvem configurada (Google Docs/Drive ou OneDrive).
    */
   async syncCorpusDocument(doc, options = {}) {
-    const text = doc.content || doc.title || ''
-    const hasDotExtension = /\.[a-z0-9]{2,5}$/i.test(String(doc.title || ''))
-    const ext = doc.extension || (doc.type === 'docx' ? '.docx' : '.txt')
-    const fileName = hasDotExtension ? doc.title : `${doc.title}${ext}`
-    const file = new File([text], fileName, { type: 'text/plain; charset=UTF-8' })
+    let file
+    try {
+      file = await this._resolveUploadFilePayload(doc)
+    } catch (err) {
+      const targetCloud = researchStorage.getEffectivePersistenceProvider(this.currentUser) === 'onedrive' ? 'onedrive' : 'google-drive'
+      return {
+        success: false,
+        provider: targetCloud,
+        error: err?.message || 'Arquivo original indisponível para envio.'
+      }
+    }
 
     const result = await this.uploadToPersonalCloud(file, {
       convertToGoogleDocs: false,
