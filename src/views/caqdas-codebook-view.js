@@ -97,7 +97,11 @@ export class CaqdasCodebookView extends LitElement {
     newCodeName: { state: true },
     newCodeDesc: { state: true },
     newCodeCatId: { state: true },
-    newCodeColor: { state: true }
+    newCodeColor: { state: true },
+    isAddingCategory: { state: true },
+    newCatName: { state: true },
+    newCatDesc: { state: true },
+    newCatColor: { state: true }
   }
 
   constructor() {
@@ -110,6 +114,10 @@ export class CaqdasCodebookView extends LitElement {
     this.newCodeDesc = ''
     this.newCodeCatId = ''
     this.newCodeColor = '#006a6a'
+    this.isAddingCategory = false
+    this.newCatName = ''
+    this.newCatDesc = ''
+    this.newCatColor = '#1565c0'
   }
 
   connectedCallback() {
@@ -128,7 +136,7 @@ export class CaqdasCodebookView extends LitElement {
     this.categories = researchStorage.getCategories()
     this.codes = researchStorage.getCodes()
     this.documents = researchStorage.getDocuments()
-    if (!this.newCodeCatId && this.categories.length > 0) {
+    if (!this.categories.some((c) => c.id === this.newCodeCatId) && this.categories.length > 0) {
       this.newCodeCatId = this.categories[0].id
     }
   }
@@ -148,6 +156,10 @@ export class CaqdasCodebookView extends LitElement {
       alert('Informe o nome do código.')
       return
     }
+    if (!this.categories.some((c) => c.id === this.newCodeCatId)) {
+      alert('Crie uma categoria antes de adicionar códigos.')
+      return
+    }
 
     researchStorage.addCode({
       name: this.newCodeName.trim(),
@@ -161,6 +173,24 @@ export class CaqdasCodebookView extends LitElement {
     this.isAddingCode = false
   }
 
+  _handleSaveCategory() {
+    const name = this.newCatName.trim()
+    if (!name) {
+      alert('Informe o nome da categoria.')
+      return
+    }
+    const cat = researchStorage.addCategory({
+      name,
+      description: this.newCatDesc.trim(),
+      color: this.newCatColor
+    })
+    this.newCodeCatId = cat.id
+    this.newCatName = ''
+    this.newCatDesc = ''
+    this.isAddingCategory = false
+    this._loadData()
+  }
+
   render() {
     return html`
       <div class="header-row">
@@ -171,11 +201,74 @@ export class CaqdasCodebookView extends LitElement {
           </p>
         </div>
 
-        <md-filled-button @click=${() => { this.isAddingCode = !this.isAddingCode }}>
-          <md-icon slot="icon">${this.isAddingCode ? 'close' : 'add'}</md-icon>
-          ${this.isAddingCode ? 'Cancelar' : 'Novo Código'}
-        </md-filled-button>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+          <md-outlined-button
+            @click=${() => {
+              this.isAddingCategory = !this.isAddingCategory
+              if (this.isAddingCategory) this.isAddingCode = false
+            }}
+          >
+            <md-icon slot="icon">${this.isAddingCategory ? 'close' : 'create_new_folder'}</md-icon>
+            ${this.isAddingCategory ? 'Cancelar' : 'Nova Categoria'}
+          </md-outlined-button>
+          <md-filled-button
+            ?disabled=${this.categories.length === 0}
+            title=${this.categories.length === 0 ? 'Crie uma categoria primeiro' : ''}
+            @click=${() => {
+              this.isAddingCode = !this.isAddingCode
+              if (this.isAddingCode) this.isAddingCategory = false
+            }}
+          >
+            <md-icon slot="icon">${this.isAddingCode ? 'close' : 'add'}</md-icon>
+            ${this.isAddingCode ? 'Cancelar' : 'Novo Código'}
+          </md-filled-button>
+        </div>
       </div>
+
+      ${this.isAddingCategory ? html`
+        <div class="add-form">
+          <h3 style="margin-top: 0; color: var(--md-sys-color-primary, #006a6a);">Criar Nova Categoria</h3>
+          <div style="margin-bottom: 12px; display: flex; gap: 12px; align-items: center;">
+            <md-outlined-text-field
+              label="Nome da Categoria"
+              style="flex: 1;"
+              .value=${this.newCatName}
+              @input=${(e) => { this.newCatName = e.target.value }}
+            ></md-outlined-text-field>
+            <label style="font-weight: 500;">Cor:</label>
+            <input
+              type="color"
+              .value=${this.newCatColor}
+              @change=${(e) => { this.newCatColor = e.target.value }}
+              style="border: none; width: 36px; height: 36px; cursor: pointer; border-radius: 4px;"
+            />
+          </div>
+          <div style="margin-bottom: 12px;">
+            <md-outlined-text-field
+              type="textarea"
+              rows="2"
+              label="Descrição da Categoria"
+              style="width: 100%;"
+              .value=${this.newCatDesc}
+              @input=${(e) => { this.newCatDesc = e.target.value }}
+            ></md-outlined-text-field>
+          </div>
+          <div style="display: flex; gap: 8px; justify-content: flex-end;">
+            <md-outlined-button @click=${() => { this.isAddingCategory = false }}>Cancelar</md-outlined-button>
+            <md-filled-button @click=${this._handleSaveCategory}>Salvar Categoria</md-filled-button>
+          </div>
+        </div>
+      ` : ''}
+
+      ${this.categories.length === 0 && !this.isAddingCategory ? html`
+        <div class="add-form" style="text-align: center;">
+          <p style="margin: 0 0 8px;"><strong>Seu livro de códigos está vazio.</strong></p>
+          <p style="margin: 0; color: var(--md-sys-color-on-surface-variant, #49454f);">
+            Comece criando uma <strong>categoria</strong> (por exemplo, um eixo temático da sua análise) e depois adicione
+            os <strong>códigos</strong> dentro dela.
+          </p>
+        </div>
+      ` : ''}
 
       ${this.isAddingCode ? html`
         <div class="add-form">

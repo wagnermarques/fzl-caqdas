@@ -1,4 +1,4 @@
-import { INITIAL_RESEARCH_DATA } from './sample-data.js'
+import { INITIAL_RESEARCH_DATA, LEGACY_SAMPLE_DOCUMENTS } from './sample-data.js'
 import { BARDIN_OPEN_ACCESS_SOURCES, INITIAL_STUDY_NOTES } from './bardin-theory-data.js'
 
 const STORAGE_KEY = 'fzl_caqdas_research_data_v1'
@@ -320,6 +320,13 @@ class ResearchStorageService {
         const parsed = JSON.parse(raw)
         if (Array.isArray(parsed?.documents)) {
           let sanitized = false
+          const withoutSamples = parsed.documents.filter(
+            (doc) => LEGACY_SAMPLE_DOCUMENTS[doc?.id] === undefined || LEGACY_SAMPLE_DOCUMENTS[doc.id] !== doc.content
+          )
+          if (withoutSamples.length !== parsed.documents.length) {
+            parsed.documents = withoutSamples
+            sanitized = true
+          }
           for (const doc of parsed.documents) {
             if (doc.status === 'synced' && !this.hasRemoteSync(doc)) {
               doc.status = 'local'
