@@ -67,13 +67,16 @@
       <p class="meta">
         Aplicação Web (PWA): <a href="https://wagnermarques.github.io/fzl-caqdas/">https://wagnermarques.github.io/fzl-caqdas/</a>
         <br />
-        Última atualização: 16 de novembro de 2026
+        Responsável: Wagner Marques — contato: <a href="mailto:wagnerdocri@gmail.com">wagnerdocri@gmail.com</a>
+        <br />
+        Última atualização: 17 de novembro de 2026
       </p>
 
       <div class="highlight">
         <strong>Resumo de Privacidade:</strong> O <strong>FZL CAQDAS</strong> funciona inteiramente no navegador do usuário
-        (client-side PWA). Não mantemos servidor próprio para armazenar documentos de pesquisa, códigos qualitativos,
-        anotações ou credenciais Google/Microsoft do usuário.
+        (client-side PWA). Não mantemos servidor próprio: documentos de pesquisa, gravações, fotos, códigos qualitativos,
+        anotações e credenciais ficam no seu dispositivo e, se você autorizar, na <strong>sua própria</strong> conta de
+        nuvem (Google Drive ou Microsoft OneDrive). Nenhum dado é enviado ao desenvolvedor.
       </div>
 
       <h2>1. Dados Acessados via Autenticação Google (OAuth 2.0)</h2>
@@ -85,34 +88,72 @@
         </li>
         <li>
           <code>https://www.googleapis.com/auth/drive.file</code> (escopo por arquivo, menor privilégio): utilizado
-          exclusivamente quando você escolhe sincronizar ou enviar documentos do seu corpus de pesquisa (entrevistas,
-          transcrições, documentos Word e capturas de campo) para a pasta configurada (padrão <code>APP-CAQDAS-HOME-DIR</code>)
-          no seu próprio Google Drive / Google Docs.
+          exclusivamente quando você escolhe sincronizar documentos do seu corpus de pesquisa (entrevistas, transcrições,
+          documentos Word/PDF, fotos, vídeos e gravações de áudio) para a pasta configurada (padrão
+          <code>APP-CAQDAS-HOME-DIR</code>) no seu próprio Google Drive, e para renomear esses mesmos arquivos quando você
+          os renomeia no aplicativo.
         </li>
       </ul>
       <p>
         <strong>Restrição estrita de acesso:</strong> com o escopo <code>drive.file</code>, o aplicativo
-        <strong>não consegue listar, ler, modificar ou apagar</strong> nenhum outro arquivo pré-existente na sua conta
-        do Google Drive que não tenha sido criado ou explicitamente selecionado por você nesta aplicação.
+        <strong>não consegue listar, ler, modificar ou apagar</strong> nenhum outro arquivo da sua conta do Google Drive
+        que não tenha sido criado ou explicitamente selecionado por você nos aplicativos FZL (ver seção 6).
+      </p>
+      <p>
+        O login com conta Microsoft funciona de forma equivalente, usando apenas o acesso necessário para gravar os
+        arquivos na pasta do aplicativo no seu OneDrive.
       </p>
 
-      <h2>2. Armazenamento, Processamento e Compartilhamento de Dados</h2>
+      <h2>2. Câmera, Microfone e Áudio de Reuniões</h2>
       <ul>
         <li>
-          <strong>Armazenamento local:</strong> corpus de documentos, códigos Bardin, memorandos e preferências ficam
-          salvos apenas no armazenamento local do seu próprio navegador (<code>localStorage</code> e <code>sessionStorage</code>).
+          <strong>Câmera:</strong> usada somente quando você abre a aba <em>Captura de dados por imagem</em> para fotografar
+          documentos ou registrar vídeos de observação.
         </li>
         <li>
-          <strong>Armazenamento em nuvem sob seu controle:</strong> quando autorizado por você, os arquivos enviados são
-          transmitidos diretamente do seu navegador para a API oficial do Google Drive / Google Docs ou Microsoft OneDrive.
+          <strong>Microfone:</strong> usado somente enquanto você grava uma entrevista na aba
+          <em>Captura de dados por áudio</em>.
         </li>
         <li>
-          <strong>Zero venda ou repasse:</strong> não vendemos, alugamos ou transferimos dados pessoais ou conteúdos de
-          pesquisa para terceiros, corretores de dados ou serviços de publicidade.
+          <strong>Áudio de reunião online:</strong> no modo reunião, o navegador pede que você escolha uma aba ou tela para
+          compartilhar; apenas a trilha de áudio é gravada (a imagem é descartada) e misturada ao seu microfone.
+        </li>
+        <li>
+          Cada captura é exibida para você nomear, salvar ou descartar antes de ser armazenada. Nada é transmitido em tempo
+          real nem enviado a serviços de transcrição de terceiros.
+        </li>
+      </ul>
+      <p>
+        <strong>Consentimento dos participantes:</strong> ao gravar entrevistas ou reuniões, você é responsável por obter o
+        consentimento das pessoas gravadas, conforme a LGPD (Lei nº 13.709/2018) e as normas de ética em pesquisa aplicáveis
+        (por exemplo, Resoluções CNS 466/2012 e 510/2016).
+      </p>
+
+      <h2>3. Armazenamento, Processamento e Compartilhamento de Dados</h2>
+      <ul>
+        <li>
+          <strong>Armazenamento local:</strong> metadados do corpus, códigos Bardin, memorandos e preferências ficam no
+          <code>localStorage</code> do navegador; os arquivos binários (documentos, fotos, vídeos e áudios) ficam no
+          <code>IndexedDB</code> do próprio dispositivo. Os tokens de acesso à nuvem ficam apenas no
+          armazenamento deste navegador (<code>sessionStorage</code>/<code>localStorage</code>), nunca são enviados ao
+          desenvolvedor e expiram automaticamente (no Google, em cerca de 1 hora).
+        </li>
+        <li>
+          <strong>Armazenamento em nuvem sob seu controle:</strong> quando a sincronização está ativada, os arquivos são
+          transmitidos diretamente do seu navegador para a API oficial do Google Drive ou do Microsoft OneDrive, sem passar
+          por servidores intermediários.
+        </li>
+        <li>
+          <strong>Sem venda ou repasse:</strong> não vendemos, alugamos ou transferimos dados pessoais ou conteúdos de
+          pesquisa para terceiros, corretores de dados ou serviços de publicidade, e não usamos esses dados para treinar
+          modelos de inteligência artificial.
+        </li>
+        <li>
+          <strong>Sem rastreamento:</strong> o aplicativo não usa cookies de publicidade nem ferramentas de analytics.
         </li>
       </ul>
 
-      <h2>3. Conformidade com a Política de Dados do Google (Limited Use)</h2>
+      <h2>4. Conformidade com a Política de Dados do Google (Limited Use)</h2>
       <p>
         O uso e a transferência de informações recebidas das APIs do Google pelo <strong>FZL CAQDAS</strong> seguem a
         <a href="https://developers.google.com/terms/api-services-user-data-policy" target="_blank" rel="noopener noreferrer">
@@ -120,16 +161,40 @@
         </a>, incluindo os requisitos de Uso Limitado (<em>Limited Use</em>).
       </p>
 
-      <h2>4. Revogação de Acesso e Exclusão</h2>
+      <h2>5. Revogação de Acesso e Exclusão</h2>
+      <ul>
+        <li>Clique em <strong>Desconectar</strong> no aplicativo para encerrar a sessão.</li>
+        <li>
+          Remova documentos individualmente no <em>Explorador de Arquivos</em> ou apague todos os dados locais limpando os
+          dados do site nas configurações do navegador.
+        </li>
+        <li>Arquivos já sincronizados permanecem na sua nuvem até que você os apague lá.</li>
+        <li>
+          Revogue a permissão concedida a qualquer momento em
+          <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer">myaccount.google.com/permissions</a>.
+        </li>
+      </ul>
+
+      <h2>6. Aplicativos FZL e Login Compartilhado</h2>
       <p>
-        Você pode encerrar a sessão a qualquer momento clicando em <strong>Desconectar</strong> dentro do aplicativo, limpar
-        os dados do navegador ou revogar imediatamente a permissão concedida em
-        <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener noreferrer">
-          myaccount.google.com/permissions
-        </a>.
+        O FZL CAQDAS faz parte de um conjunto de aplicativos web FZL publicados em
+        <code>wagnermarques.github.io</code> que compartilham o mesmo cliente de login Google. Por isso, a tela de
+        consentimento do Google exibe o nome do conjunto, e não o nome de cada aplicativo. Todos os aplicativos FZL
+        seguem os mesmos princípios desta política: processamento no navegador, nenhum servidor próprio e dados somente no
+        seu dispositivo ou na sua nuvem.
+      </p>
+      <p>
+        Como os aplicativos compartilham o mesmo cliente OAuth, arquivos criados por um aplicativo FZL no seu Google Drive
+        também podem ser acessados por outro aplicativo FZL que você autorizar com o escopo <code>drive.file</code>. Os
+        dados locais de cada aplicativo ficam separados por nome no armazenamento do navegador.
       </p>
 
-      <h2>5. Contato</h2>
+      <h2>7. Alterações desta Política</h2>
+      <p>
+        Mudanças relevantes serão publicadas nesta página com a data de atualização revisada.
+      </p>
+
+      <h2>8. Contato</h2>
       <p>
         Dúvidas sobre esta política de privacidade ou solicitações relacionadas aos dados podem ser enviadas para
         <a href="mailto:wagnerdocri@gmail.com">wagnerdocri@gmail.com</a>.
