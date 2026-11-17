@@ -391,7 +391,7 @@ export class CaqdasPersistenceConfigView extends LitElement {
     try {
       const activeProvider = researchStorage.getEffectivePersistenceProvider(this.currentUser)
       const result = await this.cloudController.syncCorpusDocument(doc, {
-        convertToGoogleDocs: this.cloudConfig.googleDriveConvertToDocs,
+        convertToGoogleDocs: false,
         folderId:
           activeProvider === 'onedrive'
             ? this.cloudConfig.oneDriveFolderId
@@ -400,7 +400,7 @@ export class CaqdasPersistenceConfigView extends LitElement {
 
       if (result.success) {
         this.documents = researchStorage.getDocuments()
-        const targetLabel = activeProvider === 'onedrive' ? 'OneDrive' : 'Google Docs'
+        const targetLabel = activeProvider === 'onedrive' ? 'OneDrive' : 'Google Drive'
         this._driveDiagnostic = {
           step: 'ok',
           message: `Documento "${doc.title}" enviado com sucesso para o ${targetLabel}.`
@@ -443,14 +443,14 @@ export class CaqdasPersistenceConfigView extends LitElement {
       researchStorage.updateDocument(d.id, {
         status: 'synced',
         storageProvider: 'google-drive',
-        externalViewerUrl: `https://docs.google.com/document/d/${mockId}/edit`,
-        externalViewerLabel: 'Abrir no Google Docs ↗',
+        externalViewerUrl: `https://drive.google.com/file/d/${mockId}/view`,
+        externalViewerLabel: 'Abrir no Google Drive ↗',
         googleDriveFileId: mockId,
         syncedAt: nowIso
       })
     }
     this.documents = researchStorage.getDocuments()
-    alert(`✔ ${docxDocs.length} documento(s) Word sincronizado(s) com links de edição no Google Docs!`)
+    alert(`✔ ${docxDocs.length} documento(s) sincronizado(s) com links no Google Drive!`)
   }
 
   render() {
@@ -816,23 +816,6 @@ export class CaqdasPersistenceConfigView extends LitElement {
             ></md-outlined-text-field>
           </div>
 
-          <label class="switch-label">
-            <input
-              type="checkbox"
-              style="width: 18px; height: 18px; cursor: pointer;"
-              .checked=${Boolean(this.cloudConfig.googleDriveConvertToDocs)}
-              @change=${(e) => {
-                this._updateCloudConfig({ googleDriveConvertToDocs: e.target.checked })
-              }}
-            />
-            <span>
-              <strong>Converter documentos (.docx / transcrições) em Google Docs nativo</strong>
-              <div style="font-size: 0.78rem; color: #64748b;">
-                Permite abrir e editar entrevistas e documentos diretamente no Google Docs.
-              </div>
-            </span>
-          </label>
-
           <div class="form-group" style="margin-top: 10px;">
             <md-outlined-text-field
               label="Token OAuth2 Google Drive (Opcional)"
@@ -929,7 +912,7 @@ export class CaqdasPersistenceConfigView extends LitElement {
             @click=${this._simulateDocsSyncForSample}
           >
             <md-icon slot="icon">sync</md-icon>
-            Sincronizar Arquivos DOCX no Google Docs (Simulação)
+            Sincronizar Arquivos no Google Drive (Simulação)
           </md-outlined-button>
         </div>
 

@@ -36,7 +36,7 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
     const cloudCfg = researchStorage.getCloudSyncConfig()
     const socialCfg = authService.getSocialAuthConfig?.() || {}
     super(host, {
-      convertToGoogleDocs: cloudCfg.googleDriveConvertToDocs ?? true,
+      convertToGoogleDocs: false,
       googleDriveFolderId: cloudCfg.googleDriveFolderId || undefined,
       oneDriveFolderId: cloudCfg.oneDriveFolderId || undefined,
       authConfig: {
@@ -140,99 +140,6 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
     if (!this.authController.currentUser && this.authController.accessToken) {
       this.authController.logout()
     }
-  }
-
-  async _isZipBinaryFile(file) {
-    try {
-      if (!file || typeof file.slice !== 'function' || file.size < 4) return false
-      const buf = await file.slice(0, 4).arrayBuffer()
-      const bytes = new Uint8Array(buf)
-      return bytes[0] === 0x50 && bytes[1] === 0x4b
-    } catch {
-      return false
-    }
-  }
-
-  _isTextConvertibleForGoogleDocs(file) {
-    if (!file) return false
-    const name = String(file.name || '').toLowerCase()
-    const type = String(file.type || '').toLowerCase()
-    if (type.startsWith('text/')) return true
-    return /\.(txt|md|csv|rtf|html?|docx)$/i.test(name)
-  }
-
-  async _uploadPlainTextAsGoogleDoc(file, config) {
-    const token =
-      config.googleAuthToken || (config.googleTokenProvider ? await config.googleTokenProvider() : '')
-    if (!token) {
-      throw new Error('Google Drive OAuth2 access token is missing.')
-    }
-
-    const cleanName = String(file.name || 'Documento CAQDAS').replace(/\.(docx|txt|md)$/i, '') || 'Documento CAQDAS'
-    const metadata = {
-      name: cleanName,
-      mimeType: 'application/vnd.google-apps.document',
-      ...(config.googleDriveFolderId ? { parents: [config.googleDriveFolderId] } : {})
-    }
-
-    const boundary = `-------FzlDocsUpload${Date.now()}`
-    const textContent = await file.text()
-    const multipartBlob = new Blob(
-      [
-        `\r\n--${boundary}\r\n`,
-        'Content-Type: application/json; charset=UTF-8\r\n\r\n',
-        JSON.stringify(metadata),
-        `\r\n--${boundary}\r\n`,
-        'Content-Type: text/plain; charset=UTF-8\r\n\r\n',
-        textContent,
-        `\r\n--${boundary}--`
-      ],
-      { type: `multipart/related; boundary=${boundary}` }
-    )
-
-    const res = await fetch(
-      'https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,name,mimeType,webViewLink,webContentLink',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': `multipart/related; boundary=${boundary}`
-        },
-        body: multipartBlob
-      }
-    )
-
-    if (!res.ok) {
-      const errorText = await res.text()
-      throw new Error(`Google Drive API error (${res.status}): ${errorText}`)
-    }
-
-    const data = await res.json()
-    const externalViewerUrl = data.webViewLink || `https://docs.google.com/document/d/${data.id}/edit`
-
-    return {
-      success: true,
-      provider: 'google-drive',
-      fileId: data.id,
-      fileUrl: data.webContentLink || externalViewerUrl,
-      externalViewerUrl,
-      externalViewerLabel: 'Abrir no Google Docs ↗',
-      response: data
-    }
-  }
-
-  /**
-   * Garante conversão nativa para Google Docs tanto de arquivos .docx reais quanto de
-   * transcrições em texto (.txt, .md ou documentos sintetizados do corpus).
-   */
-  async performUpload(file, config, context) {
-    if (config?.provider === 'google-drive' && config?.googleDriveConvertToDocs) {
-      const isRealZipDocx = await this._isZipBinaryFile(file)
-      if (!isRealZipDocx && this._isTextConvertibleForGoogleDocs(file)) {
-        return this._uploadPlainTextAsGoogleDoc(file, config)
-      }
-    }
-    return super.performUpload(file, config, context)
   }
 
   async _inspectGoogleToken(token) {
@@ -761,7 +668,7 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
       if (!el) continue
       if (typeof el.bindSocialAuth === 'function' && allowCloudUpload && cloudCfg.autoConfigureByAuthProvider !== false) {
         el.bindSocialAuth(this.authController, {
-          convertToGoogleDocs: Boolean(cloudCfg.googleDriveConvertToDocs),
+          convertToGoogleDocs: false,
           googleDriveFolderId: cloudCfg.googleDriveFolderId || undefined,
           oneDriveFolderId: cloudCfg.oneDriveFolderId || undefined
         })
@@ -772,7 +679,7 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
       el.storageProvider = effectiveProvider
       el.googleDriveFolderId = allowCloudUpload ? (cloudCfg.googleDriveFolderId || '') : ''
       el.oneDriveFolderId = allowCloudUpload ? (cloudCfg.oneDriveFolderId || '') : ''
-      el.googleDriveConvertToDocs = allowCloudUpload && Boolean(cloudCfg.googleDriveConvertToDocs)
+      el.googleDriveConvertToDocs = false
       el.googleAuthToken = allowCloudUpload ? (cloudCfg.googleAuthToken || '') : ''
       el.oneDriveAuthToken = allowCloudUpload ? (cloudCfg.oneDriveAuthToken || '') : ''
       el.googleTokenProvider = googleTokenProvider
@@ -805,7 +712,7 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
                 }
               )
             const result = await this.uploadToPersonalCloud(rawFile, {
-              convertToGoogleDocs: Boolean(cloudCfg.googleDriveConvertToDocs),
+              convertToGoogleDocs: false,
               folderId: rawProvider === 'onedrive' ? cloudCfg.oneDriveFolderId : cloudCfg.googleDriveFolderId,
               context: { docId: managedFile.id, folder: managedFile.folder }
             })
@@ -899,7 +806,7 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
         targetCloud === 'google-drive'
           ? {
               provider: 'google-drive',
-              googleDriveConvertToDocs: options.convertToGoogleDocs ?? cloudCfg.googleDriveConvertToDocs ?? true,
+              googleDriveConvertToDocs: false,
               googleDriveFolderId: resolvedFolderId || undefined,
               googleAuthToken: token
             }
@@ -998,7 +905,7 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
     const file = new File([text], fileName, { type: 'text/plain; charset=UTF-8' })
 
     const result = await this.uploadToPersonalCloud(file, {
-      convertToGoogleDocs: options.convertToGoogleDocs ?? true,
+      convertToGoogleDocs: false,
       folderId: options.folderId,
       context: { docId: doc.id, participant: doc.participant }
     })

@@ -445,7 +445,7 @@ export class CaqdasCodingView extends LitElement {
                 ? html`
                     <a class="btn-docs-badge" href=${doc.externalViewerUrl} target="_blank" rel="noopener noreferrer">
                       <md-icon style="font-size: 14px;">open_in_new</md-icon>
-                      ${doc.externalViewerLabel || 'Abrir no Google Docs ↗'}
+                      ${doc.externalViewerLabel || 'Abrir no Google Drive ↗'}
                     </a>
                   `
                 : ''}

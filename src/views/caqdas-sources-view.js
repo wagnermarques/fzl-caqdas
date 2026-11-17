@@ -348,7 +348,7 @@ export class CaqdasSourcesView extends LitElement {
         externalViewerLabel: isSynced
           ? doc.externalViewerLabel ||
             (doc.storageProvider === 'google-drive'
-              ? 'Abrir no Google Docs ↗'
+              ? 'Abrir no Google Drive ↗'
               : doc.storageProvider === 'onedrive'
                 ? 'Abrir no OneDrive ↗'
                 : 'Abrir na Nuvem ↗')
@@ -386,11 +386,7 @@ export class CaqdasSourcesView extends LitElement {
         externalViewerUrl: isUploadedRemote ? remoteUrl : undefined,
         externalViewerLabel: isUploadedRemote
           ? d.externalViewerLabel ||
-            (activeProvider === 'onedrive'
-              ? 'Abrir no OneDrive ↗'
-              : ext === '.docx'
-                ? 'Abrir no Google Docs ↗'
-                : 'Abrir no Google Drive ↗')
+            (activeProvider === 'onedrive' ? 'Abrir no OneDrive ↗' : 'Abrir no Google Drive ↗')
           : undefined,
         syncedAt: isUploadedRemote ? Date.now() : undefined,
         tags: d.tags && d.tags.length > 0 ? d.tags : ['importado', docType],
@@ -516,7 +512,7 @@ export class CaqdasSourcesView extends LitElement {
 
     if (doc) {
       const externalViewerUrl = uploadResult.externalViewerUrl || doc.externalViewerUrl || doc.googleDocsUrl
-      const externalViewerLabel = uploadResult.externalViewerLabel || doc.externalViewerLabel || 'Abrir no Google Docs ↗'
+      const externalViewerLabel = uploadResult.externalViewerLabel || doc.externalViewerLabel || 'Abrir no Google Drive ↗'
 
       researchStorage.updateDocument(doc.id, {
         status: 'synced',
@@ -751,7 +747,7 @@ export class CaqdasSourcesView extends LitElement {
                 storage-provider=${effectiveProvider}
                 google-drive-folder-id=${allowCloudUpload ? (this.cloudConfig.googleDriveFolderId || '') : ''}
                 one-drive-folder-id=${allowCloudUpload ? (this.cloudConfig.oneDriveFolderId || '') : ''}
-                ?google-drive-convert-to-docs=${allowCloudUpload && Boolean(this.cloudConfig.googleDriveConvertToDocs)}
+                .googleDriveConvertToDocs=${false}
                 google-auth-token=${allowCloudUpload ? (this.cloudConfig.googleAuthToken || '') : ''}
                 one-drive-auth-token=${allowCloudUpload ? (this.cloudConfig.oneDriveAuthToken || '') : ''}
                 .fetchHandler=${() => Promise.resolve(this._getManagedFiles())}
@@ -803,7 +799,7 @@ export class CaqdasSourcesView extends LitElement {
                 storage-provider=${effectiveProvider}
                 google-drive-folder-id=${allowCloudUpload ? (this.cloudConfig.googleDriveFolderId || '') : ''}
                 one-drive-folder-id=${allowCloudUpload ? (this.cloudConfig.oneDriveFolderId || '') : ''}
-                ?google-drive-convert-to-docs=${allowCloudUpload && Boolean(this.cloudConfig.googleDriveConvertToDocs)}
+                .googleDriveConvertToDocs=${false}
                 google-auth-token=${allowCloudUpload ? (this.cloudConfig.googleAuthToken || '') : ''}
                 one-drive-auth-token=${allowCloudUpload ? (this.cloudConfig.oneDriveAuthToken || '') : ''}
                 @fzl-document-select=${this._handleDocumentSelect}

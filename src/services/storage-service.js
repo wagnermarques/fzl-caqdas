@@ -26,7 +26,7 @@ const DEFAULT_CLOUD_CONFIG = {
   microsoftClientId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MICROSOFT_CLIENT_ID) || '',
   microsoftTenantId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MICROSOFT_TENANT_ID) || 'common',
   googleDriveFolderId: '',
-  googleDriveConvertToDocs: true,
+  googleDriveConvertToDocs: false,
   googleAuthToken: '',
   oneDriveFolderId: '',
   oneDriveAuthToken: '',
@@ -149,7 +149,7 @@ class ResearchStorageService {
   getCloudSyncConfig() {
     try {
       const raw = localStorage.getItem(STORAGE_CLOUD_KEY)
-      if (raw) return { ...DEFAULT_CLOUD_CONFIG, ...JSON.parse(raw) }
+      if (raw) return { ...DEFAULT_CLOUD_CONFIG, ...JSON.parse(raw), googleDriveConvertToDocs: false }
     } catch (e) {
       console.warn('Erro ao ler configuração de nuvem:', e)
     }
@@ -157,7 +157,7 @@ class ResearchStorageService {
   }
 
   saveCloudSyncConfig(cfg) {
-    const updated = { ...this.getCloudSyncConfig(), ...cfg }
+    const updated = { ...this.getCloudSyncConfig(), ...cfg, googleDriveConvertToDocs: false }
     localStorage.setItem(STORAGE_CLOUD_KEY, JSON.stringify(updated))
     window.dispatchEvent(new CustomEvent('caqdas-cloud-sync-changed', { detail: updated }))
     return updated
