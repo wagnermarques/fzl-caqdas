@@ -180,6 +180,57 @@ export class CaqdasSourcesView extends LitElement {
       padding-top: 14px;
       border-top: 1px solid #e0e0e0;
     }
+
+    .selected-doc-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 14px;
+      padding: 12px 16px;
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 10px;
+      font-size: 0.88rem;
+    }
+
+    .btn-local-file {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #ecfdf5;
+      color: #065f46;
+      padding: 6px 12px;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.84rem;
+      border: 1px solid #a7f3d0;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .btn-local-file:hover {
+      background: #d1fae5;
+    }
+
+    .btn-external-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #e0f2fe;
+      color: #0284c7;
+      padding: 6px 12px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.84rem;
+      border: 1px solid #bae6fd;
+    }
+
+    .btn-external-link:hover {
+      background: #bae6fd;
+    }
   `
 
   static properties = {
@@ -303,8 +354,24 @@ export class CaqdasSourcesView extends LitElement {
 
   _loadDocs() {
     this.documents = researchStorage.getDocuments()
+    if (this.selectedDocForReading) {
+      this.selectedDocForReading = this.documents.find((d) => d.id === this.selectedDocForReading.id) || null
+    }
     this.requestUpdate()
     this.updateComplete.then(() => this._refreshFileManager())
+  }
+
+  async _openDocFromDevice(doc) {
+    const res = await researchStorage.openLocalDocument(doc)
+    if (!res.ok) {
+      if (doc?.externalViewerUrl) {
+        window.open(doc.externalViewerUrl, '_blank', 'noopener,noreferrer')
+      } else {
+        alert(
+          'Este arquivo não está armazenado localmente neste dispositivo. Use o botão "Abrir no Google Drive" ou reimporte o arquivo.'
+        )
+      }
+    }
   }
 
   _getManagedFiles() {
@@ -794,6 +861,50 @@ export class CaqdasSourcesView extends LitElement {
                   window.location.hash = '#/codificacao'
                 }}
               ></fzl-file-manager>
+
+              ${this.selectedDocForReading
+                ? html`
+                    <div class="selected-doc-bar">
+                      <div>
+                        <strong>${this.selectedDocForReading.title}</strong>
+                        <span style="color: #64748b; margin-left: 8px;">
+                          ${researchStorage.hasLocalDocument(this.selectedDocForReading)
+                            ? '📱 Disponível neste dispositivo'
+                            : this.selectedDocForReading.externalViewerUrl
+                              ? '☁️ Somente na nuvem'
+                              : 'Arquivo sem cópia local neste dispositivo'}
+                        </span>
+                      </div>
+                      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                        ${researchStorage.hasLocalDocument(this.selectedDocForReading)
+                          ? html`
+                              <button
+                                type="button"
+                                class="btn-local-file"
+                                @click=${() => void this._openDocFromDevice(this.selectedDocForReading)}
+                              >
+                                <md-icon style="font-size: 16px;">folder_open</md-icon>
+                                Abrir do Dispositivo
+                              </button>
+                            `
+                          : ''}
+                        ${this.selectedDocForReading.externalViewerUrl
+                          ? html`
+                              <a
+                                class="btn-external-link"
+                                href=${this.selectedDocForReading.externalViewerUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <md-icon style="font-size: 16px;">open_in_new</md-icon>
+                                ${this.selectedDocForReading.externalViewerLabel || 'Abrir no Google Drive ↗'}
+                              </a>
+                            `
+                          : ''}
+                      </div>
+                    </div>
+                  `
+                : ''}
 
               <div class="action-panel">
                 <span style="font-size: 0.9rem; color: #555;">

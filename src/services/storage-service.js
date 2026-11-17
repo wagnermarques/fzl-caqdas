@@ -219,6 +219,78 @@ class ResearchStorageService {
     }
   }
 
+  isBinaryDocumentMeta(doc) {
+    if (!doc) return false
+    const title = String(doc.title || doc.name || '').toLowerCase()
+    const ext = String(doc.extension || (title.includes('.') ? title.slice(title.lastIndexOf('.')) : '')).toLowerCase()
+    if (['.pdf', '.docx', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.webm', '.mp4', '.mp3', '.ogg', '.wav'].includes(ext)) {
+      return true
+    }
+    return ['pdf', 'docx', 'image', 'video', 'audio'].includes(String(doc.type || '').toLowerCase())
+  }
+
+  hasLocalDocument(doc) {
+    if (!doc) return false
+    if (this._binaryFiles.has(doc.id)) return true
+    if (this.isBinaryDocumentMeta(doc)) return false
+    return typeof doc.content === 'string' && doc.content.trim().length > 0
+  }
+
+  async openLocalDocument(doc) {
+    if (!doc) return { ok: false, reason: 'missing-doc' }
+    let file = await this.getBinaryFileAsync(doc.id)
+    if (!file && !this.isBinaryDocumentMeta(doc) && typeof doc.content === 'string' && doc.content.trim()) {
+      const title = String(doc.title || 'documento')
+      const fileName = /\.[a-z0-9]{2,5}$/i.test(title) ? title : `${title}${doc.extension || '.txt'}`
+      file = new File([doc.content], fileName, { type: 'text/plain;charset=utf-8' })
+    }
+    if (!file) {
+      return { ok: false, reason: 'not-present' }
+    }
+
+    const blobUrl = URL.createObjectURL(file)
+    const name = String(file.name || doc.title || 'arquivo')
+    const mime = String(file.type || '').toLowerCase()
+    const previewable =
+      mime === 'application/pdf' ||
+      mime.startsWith('text/') ||
+      mime.startsWith('image/') ||
+      mime.startsWith('video/') ||
+      mime.startsWith('audio/') ||
+      /\.(pdf|txt|md|csv|json|png|jpe?g|webp|gif|mp4|webm|mp3|ogg|wav)$/i.test(name)
+
+    if (previewable) {
+      const opened = window.open(blobUrl, '_blank', 'noopener,noreferrer')
+      if (!opened) {
+        const a = document.createElement('a')
+        a.href = blobUrl
+        a.target = '_blank'
+        a.rel = 'noopener noreferrer'
+        document.body.appendChild(a)
+        a.click()
+        a.remove()
+      }
+    } else {
+      const a = document.createElement('a')
+      a.href = blobUrl
+      a.download = name
+      a.rel = 'noopener noreferrer'
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+    }
+
+    setTimeout(() => {
+      try {
+        URL.revokeObjectURL(blobUrl)
+      } catch {
+        // Ignore revoke errors
+      }
+    }, 60_000)
+
+    return { ok: true, file }
+  }
+
   _loadTheoryData() {
     const raw = localStorage.getItem(STORAGE_THEORY_KEY)
     if (raw) {

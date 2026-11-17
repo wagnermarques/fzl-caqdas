@@ -205,6 +205,25 @@ export class CaqdasCodingView extends LitElement {
     .btn-docs-badge:hover {
       background: #bae6fd;
     }
+
+    .btn-local-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #ecfdf5;
+      color: #065f46;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.8rem;
+      border: 1px solid #a7f3d0;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .btn-local-badge:hover {
+      background: #d1fae5;
+    }
   `
 
   static properties = {
@@ -440,7 +459,19 @@ export class CaqdasCodingView extends LitElement {
               </div>
             </div>
 
-            <div style="display: flex; align-items: center; gap: 8px;">
+            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+              ${doc && researchStorage.hasLocalDocument(doc)
+                ? html`
+                    <button
+                      type="button"
+                      class="btn-local-badge"
+                      @click=${() => void researchStorage.openLocalDocument(doc)}
+                    >
+                      <md-icon style="font-size: 14px;">folder_open</md-icon>
+                      Abrir do Dispositivo
+                    </button>
+                  `
+                : ''}
               ${doc?.externalViewerUrl
                 ? html`
                     <a class="btn-docs-badge" href=${doc.externalViewerUrl} target="_blank" rel="noopener noreferrer">

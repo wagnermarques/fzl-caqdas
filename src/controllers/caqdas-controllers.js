@@ -753,7 +753,7 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
       item.extension ||
         (title.includes('.') ? title.slice(title.lastIndexOf('.')) : item.type === 'docx' ? '.docx' : '.txt')
     ).toLowerCase()
-    const isBinaryFormat = ['.pdf', '.docx', '.png', '.jpg', '.jpeg', '.webp', '.gif', '.webm', '.mp4'].includes(ext)
+    const isBinaryFormat = researchStorage.isBinaryDocumentMeta(item)
     const text = typeof item.content === 'string' ? item.content : typeof item.textContent === 'string' ? item.textContent : ''
 
     if (isBinaryFormat || !text.trim()) {

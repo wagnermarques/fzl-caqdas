@@ -201,6 +201,25 @@ export class CaqdasPersistenceConfigView extends LitElement {
       background: #bae6fd;
     }
 
+    .btn-local-file {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #ecfdf5;
+      color: #065f46;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.8rem;
+      border: 1px solid #a7f3d0;
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .btn-local-file:hover {
+      background: #d1fae5;
+    }
+
     .diag-box {
       margin-top: 12px;
       padding: 10px 12px;
@@ -930,6 +949,7 @@ export class CaqdasPersistenceConfigView extends LitElement {
             ${this.documents.map((doc) => {
               const syncState = researchStorage.getDocumentSyncState(doc, this._syncingDocIds)
               const hasDocs = Boolean(doc.externalViewerUrl)
+              const hasLocal = researchStorage.hasLocalDocument(doc)
               const isSyncing = syncState === 'syncing'
               const hasRemote = syncState === 'synced'
               const formattedFolder = researchStorage.formatPersistenceFolder(doc.folder || 'entrevistas')
@@ -958,6 +978,18 @@ export class CaqdasPersistenceConfigView extends LitElement {
                   </td>
                   <td>
                     <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                      ${hasLocal
+                        ? html`
+                            <button
+                              type="button"
+                              class="btn-local-file"
+                              @click=${() => void researchStorage.openLocalDocument(doc)}
+                            >
+                              <md-icon style="font-size: 14px;">folder_open</md-icon>
+                              Abrir do Dispositivo
+                            </button>
+                          `
+                        : ''}
                       ${hasDocs
                         ? html`
                             <a class="btn-external-link" href=${doc.externalViewerUrl} target="_blank" rel="noopener noreferrer">
