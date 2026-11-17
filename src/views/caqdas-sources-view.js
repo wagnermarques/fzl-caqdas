@@ -9,7 +9,6 @@ import '@material/web/textfield/outlined-text-field.js'
 import '@fzl/webcomponents-lit/file-manager'
 import '@fzl/webcomponents-lit/document-picker'
 import '@fzl/webcomponents-lit/camera-capture'
-import '@fzl/webcomponents-lit/reader-chapterview'
 
 export class CaqdasSourcesView extends LitElement {
   static styles = css`
@@ -53,46 +52,6 @@ export class CaqdasSourcesView extends LitElement {
       border-radius: 8px;
       font-size: 0.85rem;
       font-weight: 500;
-    }
-
-    .cloud-status-banner {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 12px;
-      background: #eef7f6;
-      border: 1px solid #c2e2e0;
-      border-radius: 12px;
-      padding: 12px 18px;
-      margin-bottom: 20px;
-      font-size: 0.9rem;
-    }
-
-    .cloud-status-left {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .user-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      background: #ffffff;
-      padding: 4px 10px;
-      border-radius: 20px;
-      border: 1px solid #b2dfdb;
-      font-size: 0.85rem;
-      font-weight: 500;
-    }
-
-    .user-avatar-tiny {
-      width: 22px;
-      height: 22px;
-      border-radius: 50%;
-      object-fit: cover;
     }
 
     .capture-status {
@@ -702,15 +661,7 @@ export class CaqdasSourcesView extends LitElement {
     const rawProvider = researchStorage.getEffectivePersistenceProvider(this.currentUser)
     const effectiveProvider = rawProvider === 'local' ? 'rest' : rawProvider
     const allowCloudUpload = isAuthenticated && (rawProvider === 'google-drive' || rawProvider === 'onedrive')
-    const anySyncing = this._syncingDocIds.size > 0
     const activeFolder = this.currentFolder || `/${homeDirName}`
-    const isGoogle =
-      this.currentUser?.provider === 'google' ||
-      this.currentUser?.email?.includes('gmail') ||
-      this.currentUser?.avatarUrl?.includes('google')
-    const isMs =
-      this.currentUser?.provider === 'microsoft' ||
-      /@(outlook|hotmail|live|msn)\./i.test(this.currentUser?.email || '')
 
     return html`
       <div class="header-box">
@@ -736,49 +687,6 @@ export class CaqdasSourcesView extends LitElement {
           Total no Corpus: <strong>${this.documents.length}</strong> documentos cadastrados | Pasta inicial de persistência:
           <code>/${homeDirName}</code>
         </div>
-      </div>
-
-      <!-- Compact Auth & Storage Summary -->
-      <div class="cloud-status-banner">
-        <div class="cloud-status-left">
-          ${this.currentUser
-            ? html`
-                <span class="user-pill">
-                  ${this.currentUser.avatarUrl
-                    ? html`<img class="user-avatar-tiny" src=${this.currentUser.avatarUrl} alt="" />`
-                    : html`<md-icon style="font-size: 18px;">account_circle</md-icon>`}
-                  <strong>${this.currentUser.name}</strong> (${this.currentUser.email})
-                  <span style="font-size: 0.72rem; background: #e0f2f1; color: #004d40; padding: 2px 6px; border-radius: 4px;">
-                    ${isGoogle ? 'Google' : isMs ? 'Microsoft' : 'Logado'}
-                  </span>
-                </span>
-              `
-            : html`
-                <span class="user-pill" style="border-color: #cbd5e1; background: #f8fafc; color: #475569;">
-                  <md-icon style="font-size: 18px; color: #64748b;">account_circle</md-icon>
-                  Não autenticado — opere localmente ou <a href="#/conta/entrar" style="color: #0284c7; font-weight: 600;">entre</a>
-                </span>
-              `}
-
-          <fzl-reader-chapterview
-            variant="pill"
-            color=${!isAuthenticated ? '#475569' : anySyncing ? '#d97706' : '#006a6a'}
-            selected
-            label=${!isAuthenticated
-              ? `💾 Local · /${homeDirName}`
-              : anySyncing
-                ? `🔄 Sincronizando · /${homeDirName}`
-                : `${rawProvider === 'local' ? '💾' : '☁️'} ${getPersistenceProviderLabel(rawProvider)} · /${homeDirName}`}
-            @fzl-click=${() => {
-              window.location.hash = '#/config/persistencia'
-            }}
-          ></fzl-reader-chapterview>
-        </div>
-
-        <md-outlined-button href="#/config/persistencia">
-          <md-icon slot="icon">tune</md-icon>
-          Configurar Persistência &amp; Nuvem
-        </md-outlined-button>
       </div>
 
       <div class="tabs-bar">

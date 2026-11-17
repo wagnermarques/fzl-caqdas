@@ -25,6 +25,7 @@ import './views/caqdas-reports-view.js'
 import './views/caqdas-theory-view.js'
 import './views/caqdas-app-docs-view.js'
 import './views/caqdas-persistence-config-view.js'
+import './components/caqdas-cloud-status-drawer-widget.js'
 
 createAppShell({
   mount: '#app',
@@ -107,6 +108,19 @@ createAppShell({
     }
   ],
   drawer: {
+    configHeader: () => html`<caqdas-cloud-status-drawer-widget></caqdas-cloud-status-drawer-widget>`,
+    configItems: (shell) => html`
+      <md-list-item
+        type="button"
+        @click=${() => {
+          if (shell) shell._drawerOpen = false
+          window.location.hash = '#/config/persistencia'
+        }}
+      >
+        <md-icon slot="start">cloud_sync</md-icon>
+        Persistência &amp; Sincronização (Nuvem)
+      </md-list-item>
+    `,
     sections: [
       {
         id: 'theory-section',
