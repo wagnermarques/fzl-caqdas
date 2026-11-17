@@ -36,6 +36,20 @@ createAppShell({
       rel="noopener noreferrer"
       style="color: inherit; text-decoration: underline;"
     >Privacidade</a>
+    ·
+    <a
+      href="https://wagnermarques.github.io/terms.html"
+      target="_blank"
+      rel="noopener noreferrer"
+      style="color: inherit; text-decoration: underline;"
+    >Termos</a>
+    ·
+    <a
+      href="https://wagnermarques.github.io/?app=caqdas"
+      target="_blank"
+      rel="noopener noreferrer"
+      style="color: inherit; text-decoration: underline;"
+    >FZL Apps</a>
   `,
   ...(hasValidStoredGoogleId || hasValidStoredMsId
     ? {
