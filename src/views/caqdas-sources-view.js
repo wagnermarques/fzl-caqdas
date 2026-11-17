@@ -9,6 +9,7 @@ import '@material/web/textfield/outlined-text-field.js'
 import '@fzl/webcomponents-lit/file-manager'
 import '@fzl/webcomponents-lit/document-picker'
 import '@fzl/webcomponents-lit/camera-capture'
+import '../components/caqdas-audio-recorder.js'
 
 export class CaqdasSourcesView extends LitElement {
   static styles = css`
@@ -450,8 +451,16 @@ export class CaqdasSourcesView extends LitElement {
     }
   }
 
-  async _saveMediaCaptureToCorpus({ file, title, content, mediaType }) {
-    const captureFolder = researchStorage.formatPersistenceFolder('capturas-camera')
+  async _saveMediaCaptureToCorpus({
+    file,
+    title,
+    content,
+    mediaType,
+    subfolder = 'capturas-camera',
+    source = 'fzl-camera-capture',
+    tags = ['camera', mediaType]
+  }) {
+    const captureFolder = researchStorage.formatPersistenceFolder(subfolder)
     const isAuthenticated = researchStorage.isCloudAuthenticated(this.currentUser)
     const activeProvider = researchStorage.getEffectivePersistenceProvider(this.currentUser)
     const isCloudProvider = isAuthenticated && (activeProvider === 'google-drive' || activeProvider === 'onedrive')
@@ -466,7 +475,7 @@ export class CaqdasSourcesView extends LitElement {
       size: file.size,
       status: 'local',
       storageProvider: 'local',
-      tags: ['camera', mediaType],
+      tags,
       content,
       quotations: []
     })
@@ -486,7 +495,7 @@ export class CaqdasSourcesView extends LitElement {
             activeProvider === 'onedrive'
               ? this.cloudConfig.oneDriveFolderId
               : this.cloudConfig.googleDriveFolderId,
-          context: { docId: savedDoc.id, folder: captureFolder, source: 'fzl-camera-capture' }
+          context: { docId: savedDoc.id, folder: captureFolder, source }
         })
 
         if (result.success) {
@@ -550,6 +559,36 @@ export class CaqdasSourcesView extends LitElement {
       title,
       mediaType: 'video',
       content: `Registro em vídeo de campo capturado via fzl-camera-capture (duração: ${video.durationSeconds || 0}s, formato: ${mime}).\nPasta de persistência: /${homeDir}/capturas-camera\nPersistência efetiva no momento: ${getPersistenceProviderLabel(effectiveProvider)}`
+    })
+  }
+
+  async _handleCaptureAudio(e) {
+    const audio = e.detail?.audio
+    if (!audio?.blob) return
+    const stamp = new Date(audio.timestamp || Date.now()).toISOString().replace(/[:.]/g, '-')
+    const mime = audio.mimeType || audio.blob.type || 'audio/webm'
+    const ext = mime.includes('mp4') ? '.m4a' : mime.includes('ogg') ? '.ogg' : '.webm'
+    const kind = audio.mode === 'meeting' ? 'reuniao' : 'entrevista'
+    const slug = (audio.label || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .toLowerCase()
+      .slice(0, 60)
+    const title = `audio-${kind}-${slug ? `${slug}-` : ''}${stamp}${ext}`
+    const file = new File([audio.blob], title, { type: mime })
+    const homeDir = researchStorage.getHomeDirName()
+    const effectiveProvider = researchStorage.getEffectivePersistenceProvider(this.currentUser)
+
+    await this._saveMediaCaptureToCorpus({
+      file,
+      title,
+      mediaType: 'audio',
+      subfolder: 'capturas-audio',
+      source: 'caqdas-audio-recorder',
+      tags: ['audio', kind, 'transcricao-pendente'],
+      content: `Gravação de áudio (${audio.mode === 'meeting' ? 'reunião online: aba compartilhada + microfone' : 'entrevista: microfone'})${audio.label ? ` – ${audio.label}` : ''}.\nDuração: ${audio.durationSeconds || 0}s, formato: ${mime}.\nTranscrição: pendente.\nPasta de persistência: /${homeDir}/capturas-audio\nPersistência efetiva no momento: ${getPersistenceProviderLabel(effectiveProvider)}`
     })
   }
 
@@ -717,7 +756,17 @@ export class CaqdasSourcesView extends LitElement {
           }}
         >
           <md-icon>photo_camera</md-icon>
-          Captura de Câmera (fzl-camera-capture)
+          Captura de dados por imagem
+        </button>
+
+        <button
+          class="tab-btn ${this.activeTab === 'audio' ? 'active' : ''}"
+          @click=${() => {
+            this.activeTab = 'audio'
+          }}
+        >
+          <md-icon>mic</md-icon>
+          Captura de dados por áudio
         </button>
 
         <button
@@ -880,6 +929,29 @@ export class CaqdasSourcesView extends LitElement {
                 @fzl-capture-photo=${this._handleCapturePhoto}
                 @fzl-capture-video=${this._handleCaptureVideo}
               ></fzl-camera-capture>
+
+              ${this.captureStatus
+                ? html`<div class="capture-status">${this.captureStatus}</div>`
+                : ''}
+            </div>
+          `
+        : ''}
+
+      ${this.activeTab === 'audio'
+        ? html`
+            <div class="card">
+              <div class="info-alert">
+                🎙️ <strong>Captura de dados por áudio:</strong>
+                ${allowCloudUpload && this.cloudConfig.autoSyncToCloud
+                  ? html`Entrevistas e reuniões são gravadas primeiro no dispositivo (IndexedDB) em
+                      <code>/${homeDirName}/capturas-audio</code> e depois sincronizadas com
+                      <strong>${getPersistenceProviderLabel(rawProvider)}</strong> para posterior transcrição.`
+                  : html`Entrevistas e reuniões são gravadas <strong>apenas localmente</strong> (IndexedDB) em
+                      <code>/${homeDirName}/capturas-audio</code>.
+                      <a href="#/config/persistencia" style="color: #0284c7; font-weight: 600;">Configurar sincronização em nuvem</a>.`}
+              </div>
+
+              <caqdas-audio-recorder @fzl-capture-audio=${this._handleCaptureAudio}></caqdas-audio-recorder>
 
               ${this.captureStatus
                 ? html`<div class="capture-status">${this.captureStatus}</div>`
