@@ -482,14 +482,7 @@ export class CaqdasCodingView extends LitElement {
     this.selectedText = text
     this.selectedUrId = ''
     if (this._reader) this._reader.pendingRange = { start, end }
-    void this._focusTitleInput()
-  }
-
-  /** O popover só aparece depois da atualização do leitor: espera os dois antes de focar. */
-  async _focusTitleInput() {
-    await this.updateComplete
-    await this._reader?.updateComplete
-    requestAnimationFrame(() => this.shadowRoot?.querySelector('.save-excerpt input')?.focus({ preventScroll: true }))
+    // O foco no campo de título é feito pelo leitor (popover-autofocus).
   }
 
   _handleReaderSelectionClear() {
@@ -744,6 +737,7 @@ export class CaqdasCodingView extends LitElement {
           <div class="reader-frame">
             <fzl-document-reader
               compact
+              popover-autofocus
               document-title=${doc?.title || ''}
               meta=${doc?.participant || ''}
               .text=${blocks ? '' : doc?.content || ''}
@@ -757,8 +751,7 @@ export class CaqdasCodingView extends LitElement {
               @fzl-reader-annotation-click=${this._handleAnnotationClick}
               @fzl-reader-preferences-change=${this._handleReaderPrefs}
             >
-              ${this.selectedText
-                ? html`
+              ${html`
                     <form
                       slot="selection-popover"
                       class="save-excerpt"
@@ -786,8 +779,7 @@ export class CaqdasCodingView extends LitElement {
                         <md-icon>close</md-icon>
                       </button>
                     </form>
-                  `
-                : ''}
+                  `}
               ${html`
                     ${doc && researchStorage.hasLocalDocument(doc)
                       ? html`
