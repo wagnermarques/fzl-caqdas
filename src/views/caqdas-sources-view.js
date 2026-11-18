@@ -983,16 +983,18 @@ export class CaqdasSourcesView extends LitElement {
     }
   }
 
-  _handleFileDelete(e) {
+  async _handleFileDelete(e) {
     const file = e.detail?.file
     if (!file) return
-    const confirmDel = confirm(`Deseja remover "${file.name}" do corpus da pesquisa?`)
-    if (confirmDel) {
-      void researchStorage.deleteBinaryFile(file.id)
-      this.documents = this.documents.filter((d) => d.id !== file.id)
-      const data = researchStorage._data
-      data.documents = this.documents
-      researchStorage._saveData(data)
+    // Apaga em todas as fontes: nuvem (lixeira do Drive/OneDrive) e navegador.
+    const result = await researchStorage.deleteDocument(file.id)
+    if (result.cancelled) return
+    this.documents = researchStorage.getDocuments()
+    if (result.pending) {
+      alert(
+        `"${file.name}" saiu do corpus, mas não foi possível removê-lo da nuvem agora` +
+          `${result.error ? ` (${result.error})` : ''}. A remoção será tentada de novo automaticamente.`
+      )
     }
   }
 

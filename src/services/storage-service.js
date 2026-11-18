@@ -1,11 +1,12 @@
 import { INITIAL_RESEARCH_DATA, LEGACY_SAMPLE_DOCUMENTS } from './sample-data.js'
 import { BARDIN_OPEN_ACCESS_SOURCES, INITIAL_STUDY_NOTES } from './bardin-theory-data.js'
+import { userData, corpusFiles } from './user-data-service.js'
 
-const STORAGE_KEY = 'fzl_caqdas_research_data_v1'
-const STORAGE_THEORY_KEY = 'fzl_caqdas_theory_study_v1'
+// Pesquisa e estudo teórico ficam no escopo do usuário (userData.getItem/setItem).
+const STORAGE_KEY = 'research_data_v1'
+const STORAGE_THEORY_KEY = 'theory_study_v1'
+// Configuração de nuvem (Client IDs, provedor) continua global ao navegador.
 const STORAGE_CLOUD_KEY = 'fzl_caqdas_cloud_sync_v1'
-const FILE_DB_NAME = 'fzl_caqdas_files_v1'
-const FILE_STORE_NAME = 'files'
 
 export const DEFAULT_HOME_DIR = 'APP-CAQDAS-HOME-DIR'
 const LEGACY_HOME_DIR = 'APP-CADDAS-HOME-DIR'
@@ -40,32 +41,39 @@ class ResearchStorageService {
   constructor() {
     this._binaryFiles = new Map()
     this._objectUrls = new Map()
+    this._scope = userData.scope
     this._data = this._loadData()
     this._theoryData = this._loadTheoryData()
-    void this._hydrateBinaryFiles()
-  }
 
-  _openFilesDb() {
-    if (typeof indexedDB === 'undefined') return Promise.resolve(null)
-    return new Promise((resolve) => {
-      try {
-        const req = indexedDB.open(FILE_DB_NAME, 1)
-        req.onupgradeneeded = () => {
-          const db = req.result
-          if (!db.objectStoreNames.contains(FILE_STORE_NAME)) {
-            db.createObjectStore(FILE_STORE_NAME, { keyPath: 'id' })
-          }
-        }
-        req.onsuccess = () => resolve(req.result)
-        req.onerror = () => resolve(null)
-      } catch {
-        resolve(null)
+    // Arquivos binários: espelha os registros do FzlCrudBaseController (IndexedDB do usuário).
+    corpusFiles.subscribe(() => this._hydrateBinaryFiles())
+    this._hydrateBinaryFiles()
+
+    // Troca de usuário: recarrega os dados do novo escopo.
+    userData.subscribe(() => {
+      if (userData.scope === this._scope) return
+      this._scope = userData.scope
+      this._reloadForScope()
+    })
+    // Escopo apagado no logout: a memória também é limpa.
+    userData.registerParticipant({
+      purge: (scope) => {
+        if (scope === this._scope) this._clearBinaryCache()
       }
     })
   }
 
-  _cacheBinaryInMemory(docId, file) {
-    if (!docId || !file) return
+  _reloadForScope() {
+    this._clearBinaryCache()
+    this._data = this._loadData()
+    this._theoryData = this._loadTheoryData()
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('caqdas-data-changed', { detail: this._data }))
+      window.dispatchEvent(new CustomEvent('caqdas-theory-changed', { detail: this._theoryData }))
+    }
+  }
+
+  _revokeUrl(docId) {
     const prevUrl = this._objectUrls.get(docId)
     if (prevUrl && typeof URL?.revokeObjectURL === 'function') {
       try {
@@ -73,32 +81,30 @@ class ResearchStorageService {
       } catch {
         // Ignore revoke failures
       }
-      this._objectUrls.delete(docId)
     }
+    this._objectUrls.delete(docId)
+  }
+
+  _clearBinaryCache() {
+    for (const docId of [...this._objectUrls.keys()]) this._revokeUrl(docId)
+    this._binaryFiles.clear()
+  }
+
+  _cacheBinaryInMemory(docId, file) {
+    if (!docId || !file) return
+    if (this._binaryFiles.get(docId) === file) return
+    this._revokeUrl(docId)
     this._binaryFiles.set(docId, file)
   }
 
   async saveBinaryFile(docId, file) {
     if (!docId || !file) return
     this._cacheBinaryInMemory(docId, file)
-    const db = await this._openFilesDb()
-    if (!db) return
-    await new Promise((resolve) => {
-      try {
-        const tx = db.transaction(FILE_STORE_NAME, 'readwrite')
-        tx.objectStore(FILE_STORE_NAME).put({
-          id: docId,
-          name: file.name || docId,
-          type: file.type || 'application/octet-stream',
-          lastModified: file.lastModified || Date.now(),
-          blob: file
-        })
-        tx.oncomplete = () => resolve()
-        tx.onerror = () => resolve()
-      } catch {
-        resolve()
-      }
-    })
+    try {
+      await corpusFiles.putFile(docId, file)
+    } catch (err) {
+      console.warn('[FZL CAQDAS] Falha ao salvar arquivo no navegador:', err)
+    }
   }
 
   getBinaryFile(docId) {
@@ -129,94 +135,86 @@ class ResearchStorageService {
     if (!docId) return null
     const cached = this._binaryFiles.get(docId)
     if (cached) return cached
-
-    const db = await this._openFilesDb()
-    if (!db) return null
-    return new Promise((resolve) => {
-      try {
-        const tx = db.transaction(FILE_STORE_NAME, 'readonly')
-        const req = tx.objectStore(FILE_STORE_NAME).get(docId)
-        req.onsuccess = () => {
-          const rec = req.result
-          if (!rec?.blob) {
-            resolve(null)
-            return
-          }
-          const restored =
-            rec.blob instanceof File
-              ? rec.blob
-              : new File([rec.blob], rec.name || docId, {
-                  type: rec.type || 'application/octet-stream',
-                  lastModified: rec.lastModified || Date.now()
-                })
-          this._cacheBinaryInMemory(docId, restored)
-          resolve(restored)
-        }
-        req.onerror = () => resolve(null)
-      } catch {
-        resolve(null)
-      }
-    })
+    await corpusFiles.whenLoaded()
+    const file = corpusFiles.get(docId)?.data?.file
+    if (!file) return null
+    this._cacheBinaryInMemory(docId, file)
+    return file
   }
 
-  async deleteBinaryFile(docId) {
-    if (!docId) return
-    const prevUrl = this._objectUrls.get(docId)
-    if (prevUrl && typeof URL?.revokeObjectURL === 'function') {
-      try {
-        URL.revokeObjectURL(prevUrl)
-      } catch {
-        // Ignore revoke errors
-      }
-    }
-    this._objectUrls.delete(docId)
-    this._binaryFiles.delete(docId)
-
-    const db = await this._openFilesDb()
-    if (!db) return
-    await new Promise((resolve) => {
-      try {
-        const tx = db.transaction(FILE_STORE_NAME, 'readwrite')
-        tx.objectStore(FILE_STORE_NAME).delete(docId)
-        tx.oncomplete = () => resolve()
-        tx.onerror = () => resolve()
-      } catch {
-        resolve()
-      }
-    })
-  }
-
-  async _hydrateBinaryFiles() {
-    const db = await this._openFilesDb()
-    if (!db) return
-    const records = await new Promise((resolve) => {
-      try {
-        const tx = db.transaction(FILE_STORE_NAME, 'readonly')
-        const req = tx.objectStore(FILE_STORE_NAME).getAll()
-        req.onsuccess = () => resolve(Array.isArray(req.result) ? req.result : [])
-        req.onerror = () => resolve([])
-      } catch {
-        resolve([])
-      }
-    })
-
+  _hydrateBinaryFiles() {
+    const present = new Set()
     let loadedAny = false
-    for (const rec of records) {
-      if (!rec?.id || !rec?.blob || this._binaryFiles.has(rec.id)) continue
-      const restored =
-        rec.blob instanceof File
-          ? rec.blob
-          : new File([rec.blob], rec.name || rec.id, {
-              type: rec.type || 'application/octet-stream',
-              lastModified: rec.lastModified || Date.now()
-            })
-      this._cacheBinaryInMemory(rec.id, restored)
-      loadedAny = true
+    for (const record of corpusFiles.items) {
+      const file = record?.data?.file
+      if (!file) continue
+      present.add(record.id)
+      if (this._binaryFiles.get(record.id) !== file) {
+        this._cacheBinaryInMemory(record.id, file)
+        loadedAny = true
+      }
     }
-
+    // Remove da memória o que saiu do armazenamento (exclusão, troca de usuário).
+    for (const docId of [...this._binaryFiles.keys()]) {
+      if (!present.has(docId) && corpusFiles.isLoaded) {
+        this._revokeUrl(docId)
+        this._binaryFiles.delete(docId)
+      }
+    }
     if (loadedAny && typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('caqdas-data-changed', { detail: this._data }))
     }
+  }
+
+  /** Referência remota (Drive/OneDrive) registrada no documento, se houver. */
+  _remoteRefOf(doc) {
+    if (!doc?.googleDriveFileId) return null
+    return {
+      provider: doc.storageProvider === 'onedrive' ? 'onedrive' : 'google-drive',
+      remoteId: doc.googleDriveFileId,
+      url: doc.externalViewerUrl || undefined,
+      syncedAt: typeof doc.syncedAt === 'number' ? doc.syncedAt : undefined
+    }
+  }
+
+  /** Mantém o registro do arquivo ciente da cópia na nuvem (para a exclusão alcançá-la). */
+  _linkRemoteOf(doc) {
+    const ref = this._remoteRefOf(doc)
+    if (!ref) return Promise.resolve()
+    return corpusFiles.linkRemote(doc.id, ref, doc.title).catch((err) => {
+      console.warn('[FZL CAQDAS] Falha ao registrar a cópia remota:', err)
+    })
+  }
+
+  /**
+   * Remove um documento do corpus em todas as fontes: nuvem (lixeira do Drive/OneDrive)
+   * e navegador. Pede confirmação. Se a nuvem falhar, a exclusão fica pendente e é
+   * repetida automaticamente; o documento sai do corpus de qualquer forma.
+   * @returns {Promise<{ cancelled: boolean, pending: boolean, error?: string }>}
+   */
+  async deleteDocument(docId) {
+    const doc = this.getDocuments().find((d) => d.id === docId)
+    if (!doc) return { cancelled: true, pending: false }
+
+    await corpusFiles.whenLoaded()
+    await this._linkRemoteOf(doc)
+
+    let pending = false
+    let error = ''
+    if (corpusFiles.get(docId)) {
+      const result = await corpusFiles.delete(docId)
+      if (result.cancelled) return { cancelled: true, pending: false }
+      pending = result.pending.length > 0
+      error = result.pending.flatMap((p) => p.failures.map((f) => f.error)).join('; ')
+    } else if (!confirm(`Deseja remover "${doc.title}" do corpus da pesquisa?`)) {
+      return { cancelled: true, pending: false }
+    }
+
+    this._revokeUrl(docId)
+    this._binaryFiles.delete(docId)
+    this._data.documents = this.getDocuments().filter((d) => d.id !== docId)
+    this._saveData(this._data)
+    return { cancelled: false, pending, error }
   }
 
   isBinaryDocumentMeta(doc) {
@@ -292,7 +290,7 @@ class ResearchStorageService {
   }
 
   _loadTheoryData() {
-    const raw = localStorage.getItem(STORAGE_THEORY_KEY)
+    const raw = userData.getItem(STORAGE_THEORY_KEY)
     if (raw) {
       try {
         return JSON.parse(raw)
@@ -309,12 +307,12 @@ class ResearchStorageService {
   }
 
   _saveTheoryData(data) {
-    localStorage.setItem(STORAGE_THEORY_KEY, JSON.stringify(data))
+    userData.setItem(STORAGE_THEORY_KEY, JSON.stringify(data))
     window.dispatchEvent(new CustomEvent('caqdas-theory-changed', { detail: data }))
   }
 
   _loadData() {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = userData.getItem(STORAGE_KEY)
     if (raw) {
       try {
         const parsed = JSON.parse(raw)
@@ -338,7 +336,7 @@ class ResearchStorageService {
             }
           }
           if (sanitized) {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed))
+            userData.setItem(STORAGE_KEY, JSON.stringify(parsed))
           }
         }
         return parsed
@@ -405,7 +403,7 @@ class ResearchStorageService {
   }
 
   _saveData(data) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(data))
+    userData.setItem(STORAGE_KEY, JSON.stringify(data))
     window.dispatchEvent(new CustomEvent('caqdas-data-changed', { detail: data }))
   }
 
@@ -512,6 +510,7 @@ class ResearchStorageService {
     if (!doc) return null
     Object.assign(doc, updates)
     this._saveData(this._data)
+    if (updates && 'googleDriveFileId' in updates) void this._linkRemoteOf(doc)
     return doc
   }
 
@@ -543,6 +542,7 @@ class ResearchStorageService {
     }
     this._data.documents.push(newDoc)
     this._saveData(this._data)
+    void this._linkRemoteOf(newDoc)
     return newDoc
   }
 
@@ -613,7 +613,10 @@ class ResearchStorageService {
       knownIds.add(f.id)
       added++
     }
-    if (added > 0 || linked > 0) this._saveData(this._data)
+    if (added > 0 || linked > 0) {
+      this._saveData(this._data)
+      for (const doc of docs) if (doc.googleDriveFileId) void this._linkRemoteOf(doc)
+    }
     return added
   }
 

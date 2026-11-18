@@ -4,7 +4,18 @@ import 'fzl-fund-appshell--lit/styles/theme.css'
 import '@fzl/design-tokens/tokens.css'
 import { createAppShell, pattern, authService } from 'fzl-fund-appshell--lit'
 import { researchStorage } from './services/storage-service.js'
-import { clearCachedCloudTokens } from './controllers/caqdas-controllers.js'
+import { clearCachedCloudTokens, CaqdasPersonalCloudDocsController } from './controllers/caqdas-controllers.js'
+import { purgeLegacyGlobalData, setCloudTokenProvider } from './services/user-data-service.js'
+
+// Dados antigos sem escopo de usuário: descartados (decisão do usuário; serão reinseridos).
+purgeLegacyGlobalData()
+
+// Token para apagar arquivos na nuvem (lixeira do Drive/OneDrive) a partir do corpus.
+let cloudTokenController = null
+setCloudTokenProvider((provider) => {
+  cloudTokenController ??= new CaqdasPersonalCloudDocsController(null)
+  return cloudTokenController.resolveCloudAccessToken(provider)
+})
 
 // Sincroniza Client IDs válidos declarados localmente sem sobrescrever o appshell.config.js com valores vazios/inválidos
 const initialCloudCfg = researchStorage.getCloudSyncConfig()

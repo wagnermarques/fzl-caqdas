@@ -16,6 +16,7 @@ import {
   FzlSocialAuthController
 } from '@fzl/webcomponents-lit/controllers'
 import { researchStorage } from '../services/storage-service.js'
+import { userData } from '../services/user-data-service.js'
 
 const DRIVE_SESSION_TOKEN_KEY = 'fzl-caqdas:drive-session-token'
 // Uma única busca/criação da pasta inicial por provedor por vez, compartilhada entre
@@ -1158,7 +1159,8 @@ export class CaqdasDocxCodingController extends FzlDocxReaderController {
 export class CaqdasBookmarksController extends FzlBookmarksController {
   constructor(host, options = {}) {
     super(host, {
-      storageKey: 'fzl_caqdas_document_bookmarks',
+      storageKey: 'document_bookmarks',
+      userData,
       ...options
     })
   }
