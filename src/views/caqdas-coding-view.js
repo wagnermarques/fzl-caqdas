@@ -1,6 +1,7 @@
 import { LitElement, html, css } from 'lit'
 import { authService } from 'fzl-fund-appshell--lit'
 import { researchStorage, getPersistenceProviderLabel } from '../services/storage-service.js'
+import { userData } from '../services/user-data-service.js'
 import { CaqdasDocxCodingController, CaqdasPersonalCloudDocsController } from '../controllers/caqdas-controllers.js'
 import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
@@ -8,6 +9,10 @@ import '@material/web/icon/icon.js'
 import '@material/web/select/outlined-select.js'
 import '@material/web/select/select-option.js'
 import '@fzl/webcomponents-lit/reader-chapterview'
+import '@fzl/webcomponents-lit/document-reader'
+
+const READER_PREFS_KEY = 'reader_prefs_v1'
+const CONTEXT_CHARS = 32
 
 export class CaqdasCodingView extends LitElement {
   static styles = css`
@@ -54,15 +59,122 @@ export class CaqdasCodingView extends LitElement {
       gap: 16px;
     }
 
-    .document-text-container {
-      margin-top: 16px;
-      font-size: 1.15rem;
-      line-height: 1.8;
-      padding: 16px;
-      background: #fafafa;
+    .reader-frame {
+      height: min(78vh, 960px);
+      min-height: 360px;
+      margin-top: 12px;
+      border: 1px solid var(--md-sys-color-outline-variant, #e0e0e0);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .reader-frame fzl-document-reader {
+      --fzl-reader-height: 100%;
+    }
+
+    .save-excerpt {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .save-excerpt input {
+      height: 26px;
+      width: clamp(120px, 22vw, 260px);
+      padding: 0 8px;
+      border-radius: 6px;
+      border: 1px solid var(--md-sys-color-outline, #9e9e9e);
+      font: inherit;
+      font-size: 0.85rem;
+      background: var(--md-sys-color-surface, #fff);
+      color: var(--md-sys-color-on-surface, #1c1b1f);
+    }
+
+    .tool-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 26px;
+      padding: 0 8px;
+      border-radius: 6px;
+      border: 1px solid var(--md-sys-color-outline-variant, #ccc);
+      background: var(--md-sys-color-surface, #fff);
+      color: var(--md-sys-color-on-surface, #1c1b1f);
+      font: inherit;
+      font-size: 0.8rem;
+      cursor: pointer;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+
+    .tool-btn.primary {
+      background: var(--md-sys-color-primary, #006a6a);
+      border-color: var(--md-sys-color-primary, #006a6a);
+      color: var(--md-sys-color-on-primary, #fff);
+    }
+
+    .tool-btn[disabled] {
+      opacity: 0.5;
+      cursor: default;
+    }
+
+    .tool-btn md-icon {
+      font-size: 16px;
+    }
+
+    .selection-bar {
+      margin-top: 12px;
+      padding: 10px 12px;
+      background: var(--md-sys-color-surface-container-low, #eef7f6);
       border-radius: 8px;
-      border: 1px solid #eee;
-      user-select: text;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+      font-size: 0.9rem;
+    }
+
+    .selection-bar .preview {
+      flex: 1 1 240px;
+      min-width: 0;
+      font-style: italic;
+      color: var(--md-sys-color-primary, #006a6a);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .excerpt-title {
+      font-weight: 600;
+      color: var(--md-sys-color-on-surface, #1c1b1f);
+    }
+
+    .excerpt-title input {
+      width: 100%;
+      box-sizing: border-box;
+      font: inherit;
+      padding: 4px 6px;
+    }
+
+    .excerpt-meta {
+      font-size: 0.75rem;
+      color: var(--md-sys-color-on-surface-variant, #666);
+    }
+
+    .link-btn {
+      cursor: pointer;
+      background: transparent;
+      border: none;
+      color: var(--md-sys-color-primary, #006a6a);
+      font: inherit;
+      font-size: 0.8rem;
+      padding: 2px 4px;
+    }
+
+    .sidebar-actions {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
     }
 
     .quotation-badge {
@@ -117,45 +229,6 @@ export class CaqdasCodingView extends LitElement {
       border: none;
       font-size: 0.8rem;
       padding: 2px 4px;
-    }
-
-    .coding-action-bar {
-      margin-top: 16px;
-      padding: 12px;
-      background: #eef7f6;
-      border-radius: 8px;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .editor-toolbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 12px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid #eee;
-    }
-
-    .zoom-btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 28px;
-      height: 28px;
-      border-radius: 4px;
-      border: 1px solid #ccc;
-      background: #fff;
-      cursor: pointer;
-      font-weight: bold;
-    }
-
-    .zoom-btn:hover {
-      background: #f0f0f0;
     }
 
     .ur-chips-container {
@@ -235,7 +308,11 @@ export class CaqdasCodingView extends LitElement {
     selectedText: { state: true },
     selectedCodeId: { state: true },
     selectedUrId: { state: true },
-    showUrList: { state: true }
+    showUrList: { state: true },
+    selectionAnchor: { state: true },
+    excerptTitle: { state: true },
+    editingExcerptId: { state: true },
+    readerPrefs: { state: true }
   }
 
   constructor() {
@@ -249,6 +326,10 @@ export class CaqdasCodingView extends LitElement {
     this.selectedCodeId = ''
     this.selectedUrId = ''
     this.showUrList = true
+    this.selectionAnchor = null
+    this.excerptTitle = ''
+    this.editingExcerptId = ''
+    this.readerPrefs = this._loadReaderPrefs()
     this.readerController = new CaqdasDocxCodingController(this, { fontSize: 16 })
     this.cloudController = new CaqdasPersonalCloudDocsController(this)
   }
@@ -272,11 +353,16 @@ export class CaqdasCodingView extends LitElement {
     }
     window.addEventListener('caqdas-data-changed', this._onDataChanged)
     window.addEventListener('caqdas-cloud-sync-changed', this._onCloudChanged)
+    // Preferências de leitura são do usuário: recarrega ao trocar de conta.
+    this._unsubscribeUserData = userData.subscribe(() => {
+      this.readerPrefs = this._loadReaderPrefs()
+    })
   }
 
   disconnectedCallback() {
     super.disconnectedCallback()
     this._unsubscribeAuth?.()
+    this._unsubscribeUserData?.()
     window.removeEventListener('caqdas-data-changed', this._onDataChanged)
     window.removeEventListener('caqdas-cloud-sync-changed', this._onCloudChanged)
   }
@@ -326,46 +412,229 @@ export class CaqdasCodingView extends LitElement {
 
   _selectDoc(id) {
     this.selectedDocId = id
-    this.selectedText = ''
+    this._clearSelection()
     this.selectedUrId = ''
+    this.editingExcerptId = ''
     this._syncReaderDoc()
+  }
+
+  _clearSelection() {
+    this.selectedText = ''
+    this.selectionAnchor = null
+    this.excerptTitle = ''
+  }
+
+  // --- leitor ------------------------------------------------------------------------
+
+  get _reader() {
+    return this.shadowRoot?.querySelector('fzl-document-reader') || null
+  }
+
+  _loadReaderPrefs() {
+    try {
+      const raw = userData.getItem(READER_PREFS_KEY)
+      const parsed = raw ? JSON.parse(raw) : {}
+      return {
+        fontSize: Number.isFinite(parsed.fontSize) ? parsed.fontSize : 18,
+        readingWidth: parsed.readingWidth === 'wide' ? 'wide' : 'narrow'
+      }
+    } catch {
+      return { fontSize: 18, readingWidth: 'narrow' }
+    }
+  }
+
+  _handleReaderPrefs(e) {
+    const { fontSize, readingWidth } = e.detail || {}
+    this.readerPrefs = { fontSize, readingWidth }
+    userData.setItem(READER_PREFS_KEY, JSON.stringify(this.readerPrefs))
+  }
+
+  /**
+   * Lê a seleção atual dentro do leitor e calcula a âncora no texto canônico
+   * (reader.plainText): start/end, contexto antes/depois e bloco de origem.
+   * Provisório até a fase 2 do <fzl-document-reader> (evento fzl-reader-selection).
+   */
+  _readSelectionAnchor() {
+    const reader = this._reader
+    if (!reader) return null
+    const root = reader.shadowRoot
+    const sel = (root && typeof root.getSelection === 'function' ? root.getSelection() : null) || window.getSelection()
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null
+    const raw = sel.toString()
+    const text = raw.trim()
+    if (!text) return null
+
+    const plain = String(reader.plainText || '')
+    let start = -1
+    let blockIndex = null
+    try {
+      const range = sel.getRangeAt(0)
+      const startNode = range.startContainer
+      const el = startNode.nodeType === Node.ELEMENT_NODE ? startNode : startNode.parentElement
+      const block = el?.closest?.('[data-offset]')
+      if (block && root?.contains(block)) {
+        const pre = document.createRange()
+        pre.setStart(block, 0)
+        pre.setEnd(range.startContainer, range.startOffset)
+        start = Number(block.dataset.offset) + pre.toString().length + (raw.length - raw.trimStart().length)
+        blockIndex = Number(block.dataset.index)
+        if (plain.slice(start, start + text.length) !== text) start = -1
+      }
+    } catch {
+      start = -1
+    }
+    if (start < 0) {
+      // Fallback: procura o texto no documento (primeira ocorrência).
+      start = plain.indexOf(text)
+      if (start < 0) return { text, start: null, end: null, prefix: '', suffix: '', blockIndex: null }
+      const offsets = reader.blockOffsets || []
+      blockIndex = null
+      for (let i = 0; i < offsets.length; i++) {
+        const o = offsets[i]
+        const begin = typeof o === 'number' ? o : o?.start
+        if (typeof begin === 'number' && begin <= start) blockIndex = i
+      }
+    }
+    const end = start + text.length
+    return {
+      text,
+      start,
+      end,
+      prefix: plain.slice(Math.max(0, start - CONTEXT_CHARS), start),
+      suffix: plain.slice(end, end + CONTEXT_CHARS),
+      blockIndex
+    }
+  }
+
+  _handleReaderPointerUp() {
+    // Pequeno atraso para o navegador concluir a seleção.
+    setTimeout(() => {
+      const anchor = this._readSelectionAnchor()
+      if (!anchor) return
+      this.selectionAnchor = anchor
+      this.selectedText = anchor.text
+      this.selectedUrId = ''
+      this.updateComplete.then(() => this.shadowRoot?.querySelector('.save-excerpt input')?.focus())
+    }, 30)
+  }
+
+  _syncReaderDoc() {
+    const doc = this.documents.find((d) => d.id === this.selectedDocId)
+    if (doc) {
+      this.readerController.openDocument({
+        id: doc.id,
+        name: doc.title,
+        category: doc.type === 'docx' ? 'docx' : doc.type === 'pdf' ? 'pdf' : 'text',
+        extension: doc.extension || (doc.type === 'docx' ? '.docx' : '.txt'),
+        textContent: doc.content || '',
+        blocks: doc.docxBlocks || undefined
+      })
+    }
   }
 
   _selectRegistrationUnit(ur) {
     this.selectedUrId = ur.urId
     this.selectedText = ur.text
+    const plain = String(this._reader?.plainText || '')
+    const start = plain.indexOf(ur.text)
+    this.selectionAnchor =
+      start < 0
+        ? { text: ur.text, start: null, end: null, prefix: '', suffix: '', blockIndex: null }
+        : {
+            text: ur.text,
+            start,
+            end: start + ur.text.length,
+            prefix: plain.slice(Math.max(0, start - CONTEXT_CHARS), start),
+            suffix: plain.slice(start + ur.text.length, start + ur.text.length + CONTEXT_CHARS),
+            blockIndex: null
+          }
   }
 
-  _handleMouseUp(e) {
-    const selection = window.getSelection()
-    const text = selection.toString().trim()
-    if (text) {
-      this.selectedText = text
-    }
-  }
+  // --- trechos ------------------------------------------------------------------------
 
-  _handleApplyCode() {
-    if (!this.selectedText) {
-      alert('Selecione primeiro um trecho de texto para codificar.')
+  _handleSaveExcerpt() {
+    if (!this.selectedText || !this.selectionAnchor) {
+      alert('Selecione primeiro um trecho do documento.')
       return
     }
-    if (!this.selectedCodeId) {
-      alert('Selecione um código para aplicar.')
+    const title = this.excerptTitle.trim()
+    if (!title) {
+      alert('Dê um título ao trecho: do que ele trata?')
+      this.shadowRoot?.querySelector('.save-excerpt input')?.focus()
       return
     }
-
-    researchStorage.addQuotation(this.selectedDocId, {
-      codeId: this.selectedCodeId,
-      text: this.selectedText,
-      startOffset: 0,
-      endOffset: this.selectedText.length
+    const saved = researchStorage.addQuotation(this.selectedDocId, {
+      ...this.selectionAnchor,
+      title,
+      codeId: this.selectedCodeId || null
     })
-
-    this.selectedText = ''
+    if (!saved) {
+      alert('Não foi possível salvar o trecho.')
+      return
+    }
+    this._clearSelection()
+    try {
+      ;(this._reader?.shadowRoot?.getSelection?.() || window.getSelection())?.removeAllRanges()
+    } catch {
+      // ignore
+    }
   }
 
-  _handleDeleteQuote(quoteId) {
-    researchStorage.removeQuotation(this.selectedDocId, quoteId)
+  _handleSaveTitle(quoteId, value) {
+    const title = String(value || '').trim()
+    this.editingExcerptId = ''
+    if (!title) return
+    researchStorage.updateQuotation(this.selectedDocId, quoteId, { title })
+  }
+
+  _handleDeleteQuote(quote) {
+    if (!confirm(`Remover o trecho "${quote.title || quote.text.slice(0, 40)}"?`)) return
+    researchStorage.removeQuotation(this.selectedDocId, quote.id)
+  }
+
+  _goToExcerpt(quote) {
+    const reader = this._reader
+    const root = reader?.shadowRoot
+    if (!root) return
+    let index = quote.blockIndex
+    if (index == null && quote.start != null) {
+      const blocks = Array.from(root.querySelectorAll('[data-offset]'))
+      for (const b of blocks) if (Number(b.dataset.offset) <= quote.start) index = Number(b.dataset.index)
+    }
+    const el = index != null ? root.querySelector(`[data-index="${index}"]`) : null
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }
+
+  _exportExcerpts() {
+    const payload = researchStorage.exportExcerpts()
+    if (!payload.excerpts.length) {
+      alert('Ainda não há trechos salvos para exportar.')
+      return
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `caqdas-trechos-${new Date().toISOString().slice(0, 10)}.json`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 10_000)
+  }
+
+  async _importExcerpts(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file) return
+    try {
+      const result = researchStorage.importExcerpts(JSON.parse(await file.text()))
+      alert(
+        `Importação concluída: ${result.added} novo(s), ${result.updated} atualizado(s)` +
+          (result.skipped ? `, ${result.skipped} ignorado(s) (documento não encontrado neste corpus).` : '.')
+      )
+    } catch (err) {
+      alert(err?.message || 'Não foi possível ler o arquivo JSON.')
+    }
   }
 
   render() {
@@ -397,12 +666,15 @@ export class CaqdasCodingView extends LitElement {
       count: ur.wordCount,
       color: '#006a6a'
     }))
+    const excerpts = doc ? researchStorage.getDocumentExcerpts(doc.id) : []
+    const blocks = Array.isArray(doc?.docxBlocks) && doc.docxBlocks.length ? doc.docxBlocks : null
+    const wordCount = this.readerController.document?.wordCount || doc?.content?.split(/\s+/).filter(Boolean).length || 0
 
     return html`
       <div>
         <h1>Área de Codificação Qualitativa (Open & Thematic Coding)</h1>
         <p style="margin: 0; color: var(--md-sys-color-on-surface-variant, #49454f);">
-          Selecione o texto com o cursor do mouse e vincule-o aos conceitos e categorias da pesquisa.
+          Selecione um trecho no leitor, dê um título a ele e salve. Use a tela cheia para ler com mais espaço.
         </p>
       </div>
 
@@ -448,130 +720,199 @@ export class CaqdasCodingView extends LitElement {
 
       <div class="layout">
         <div class="editor-card">
-          <div class="editor-toolbar">
-            <div>
-              <h2 style="margin: 0; font-size: 1.25rem; color: var(--md-sys-color-on-surface, #1c1b1f);">
-                ${doc?.title || 'Selecione um documento'}
-              </h2>
-              <div style="font-size: 0.82rem; color: #666; margin-top: 4px;">
-                Participante: <strong>${doc?.participant || 'N/A'}</strong> | Pasta: <code>${docFolder}</code>
-                | Palavras: <strong>${this.readerController.document?.wordCount || doc?.content?.split(/\s+/).length || 0}</strong>
-              </div>
-            </div>
-
-            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-              ${doc && researchStorage.hasLocalDocument(doc)
-                ? html`
-                    <button
-                      type="button"
-                      class="btn-local-badge"
-                      @click=${() => void researchStorage.openLocalDocument(doc)}
-                    >
-                      <md-icon style="font-size: 14px;">folder_open</md-icon>
-                      Abrir do Dispositivo
-                    </button>
-                  `
-                : ''}
-              ${doc?.externalViewerUrl
-                ? html`
-                    <a class="btn-docs-badge" href=${doc.externalViewerUrl} target="_blank" rel="noopener noreferrer">
-                      <md-icon style="font-size: 14px;">open_in_new</md-icon>
-                      ${doc.externalViewerLabel || 'Abrir no Google Drive ↗'}
-                    </a>
-                  `
-                : ''}
-
-              <span style="font-size: 0.8rem; color: #555;">Fonte: ${this.readerController.fontSize}px</span>
-              <button class="zoom-btn" title="Diminuir fonte" @click=${() => this.readerController.zoomOut()}>-</button>
-              <button class="zoom-btn" title="Aumentar fonte" @click=${() => this.readerController.zoomIn()}>+</button>
-            </div>
+          <div class="excerpt-meta">
+            Participante: <strong>${doc?.participant || 'N/A'}</strong> | Pasta: <code>${docFolder}</code>
+            | Palavras: <strong>${wordCount}</strong>
           </div>
 
-          <!-- Unidades de Registro de Bardin (URs) via <fzl-reader-chapterview-group> e <fzl-reader-chapterview> -->
-          <div class="ur-chips-container">
-            <span style="font-size: 0.78rem; font-weight: 600; color: #004d40; width: 100%;">
-              Unidades de Registro (Bardin) — clique em uma UR para selecioná-la inteira para codificação:
-            </span>
-            <fzl-reader-chapterview-group
-              aria-label="Unidades de Registro de Bardin"
-              selection-mode="single"
-              data-storage-provider=${activeProvider}
-              data-home-dir=${homeDirName}
-              .items=${urChipItems}
-              .selected=${this.selectedUrId}
-              @fzl-change=${(e) => {
-                const urId = e.detail?.selected || e.detail?.value
-                const match = urs.find((u) => u.urId === urId)
-                if (match) {
-                  this._selectRegistrationUnit(match)
-                } else {
-                  this.selectedUrId = ''
-                }
+          ${urChipItems.length
+            ? html`
+                <!-- Unidades de Registro de Bardin (URs) via <fzl-reader-chapterview-group> -->
+                <div class="ur-chips-container">
+                  <span style="font-size: 0.78rem; font-weight: 600; color: #004d40; width: 100%;">
+                    Unidades de Registro (Bardin) — clique em uma UR para selecioná-la inteira:
+                  </span>
+                  <fzl-reader-chapterview-group
+                    aria-label="Unidades de Registro de Bardin"
+                    selection-mode="single"
+                    data-storage-provider=${activeProvider}
+                    data-home-dir=${homeDirName}
+                    .items=${urChipItems}
+                    .selected=${this.selectedUrId}
+                    @fzl-change=${(e) => {
+                      const urId = e.detail?.selected || e.detail?.value
+                      const match = urs.find((u) => u.urId === urId)
+                      if (match) {
+                        this._selectRegistrationUnit(match)
+                      } else {
+                        this.selectedUrId = ''
+                      }
+                    }}
+                  ></fzl-reader-chapterview-group>
+                </div>
+              `
+            : ''}
+
+          <div class="reader-frame">
+            <fzl-document-reader
+              compact
+              document-title=${doc?.title || ''}
+              meta=${doc?.participant || ''}
+              .text=${blocks ? '' : doc?.content || ''}
+              .blocks=${blocks}
+              .fontSize=${this.readerPrefs.fontSize}
+              .readingWidth=${this.readerPrefs.readingWidth}
+              @pointerup=${this._handleReaderPointerUp}
+              @keyup=${(e) => {
+                if (e.shiftKey || e.key === 'Shift') this._handleReaderPointerUp()
               }}
-            ></fzl-reader-chapterview-group>
+              @fzl-reader-preferences-change=${this._handleReaderPrefs}
+            >
+              ${this.selectedText
+                ? html`
+                    <form
+                      slot="actions"
+                      class="save-excerpt"
+                      @submit=${(e) => {
+                        e.preventDefault()
+                        this._handleSaveExcerpt()
+                      }}
+                    >
+                      <input
+                        type="text"
+                        placeholder="Título do trecho…"
+                        aria-label="Título do trecho selecionado"
+                        .value=${this.excerptTitle}
+                        @input=${(e) => {
+                          this.excerptTitle = e.target.value
+                        }}
+                        @keydown=${(e) => {
+                          if (e.key === 'Escape') this._clearSelection()
+                        }}
+                      />
+                      <button type="submit" class="tool-btn primary" ?disabled=${!this.excerptTitle.trim()}>
+                        <md-icon>bookmark_add</md-icon>Salvar
+                      </button>
+                    </form>
+                  `
+                : html`
+                    ${doc && researchStorage.hasLocalDocument(doc)
+                      ? html`
+                          <button
+                            slot="actions"
+                            type="button"
+                            class="tool-btn"
+                            title="Abrir o arquivo original do dispositivo"
+                            @click=${() => void researchStorage.openLocalDocument(doc)}
+                          >
+                            <md-icon>folder_open</md-icon>
+                          </button>
+                        `
+                      : ''}
+                    ${doc?.externalViewerUrl
+                      ? html`
+                          <a
+                            slot="actions"
+                            class="tool-btn"
+                            href=${doc.externalViewerUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title=${doc.externalViewerLabel || 'Abrir no Google Drive'}
+                          >
+                            <md-icon>open_in_new</md-icon>
+                          </a>
+                        `
+                      : ''}
+                  `}
+              <span slot="empty">Nenhum conteúdo de texto disponível para este documento.</span>
+            </fzl-document-reader>
           </div>
 
-          <div
-            class="document-text-container"
-            style="font-size: ${this.readerController.fontSize}px;"
-            @mouseup=${this._handleMouseUp}
-          >
-            ${doc?.content || 'Nenhum conteúdo disponível.'}
-          </div>
-
-          <div class="coding-action-bar">
-            <div style="flex: 1;">
-              <strong>Trecho selecionado:</strong>
-              <div style="font-style: italic; color: #006a6a; margin-top: 4px;">
-                ${this.selectedText ? `"${this.selectedText}"` : '(Selecione um trecho acima com o mouse)'}
-              </div>
-            </div>
-
-            <div style="display: flex; gap: 8px; align-items: center;">
+          <div class="selection-bar">
+            <span class="preview">
+              ${this.selectedText ? `“${this.selectedText}”` : 'Selecione um trecho no leitor com o mouse ou o teclado.'}
+            </span>
+            <label style="display: flex; align-items: center; gap: 6px;">
+              Código (opcional):
               <select
                 style="padding: 6px 10px; border-radius: 6px; border: 1px solid #bbb;"
                 .value=${this.selectedCodeId}
                 @change=${(e) => { this.selectedCodeId = e.target.value }}
               >
+                <option value="" ?selected=${!this.selectedCodeId}>— sem código —</option>
                 ${this.codes.map(c => html`
-                  <option value=${c.id} ?selected=${c.id === this.selectedCodeId}>
-                    ${c.name}
-                  </option>
+                  <option value=${c.id} ?selected=${c.id === this.selectedCodeId}>${c.name}</option>
                 `)}
               </select>
-
-              <md-filled-button
-                ?disabled=${!this.selectedText}
-                @click=${this._handleApplyCode}
-              >
-                <md-icon slot="icon">tag</md-icon>
-                Codificar Trecho
-              </md-filled-button>
-            </div>
+            </label>
+            ${this.selectedText
+              ? html`<button type="button" class="link-btn" @click=${() => this._clearSelection()}>Cancelar</button>`
+              : ''}
           </div>
         </div>
 
         <div class="sidebar-card">
           <h3 style="margin: 0; font-size: 1.1rem; color: var(--md-sys-color-primary, #006a6a);">
-            Excertos Codificados neste Documento (${doc?.quotations?.length || 0})
+            Trechos deste documento (${excerpts.length})
           </h3>
+          <div class="sidebar-actions">
+            <button type="button" class="tool-btn" @click=${this._exportExcerpts} title="Baixar todos os trechos do projeto em JSON">
+              <md-icon>download</md-icon>Exportar JSON
+            </button>
+            <label class="tool-btn" title="Importar trechos de um JSON exportado">
+              <md-icon>upload</md-icon>Importar JSON
+              <input type="file" accept="application/json,.json" hidden @change=${this._importExcerpts} />
+            </label>
+          </div>
 
-          ${(doc?.quotations || []).length === 0 ? html`
+          ${excerpts.length === 0 ? html`
             <div style="color: #777; font-size: 0.9rem;">
-              Nenhum trecho codificado ainda neste documento.
+              Nenhum trecho salvo neste documento ainda.
             </div>
-          ` : (doc?.quotations || []).map(q => {
-            const code = codeMap.get(q.codeId) || { name: 'Código Removido', color: '#999' }
+          ` : excerpts.map(q => {
+            const code = q.codeId ? codeMap.get(q.codeId) || { name: 'Código removido', color: '#999' } : null
             return html`
               <div class="quote-list-item">
-                <span class="quote-text">"${q.text}"</span>
+                <div class="excerpt-title">
+                  ${this.editingExcerptId === q.id
+                    ? html`
+                        <input
+                          type="text"
+                          aria-label="Título do trecho"
+                          .value=${q.title}
+                          @keydown=${(e) => {
+                            if (e.key === 'Enter') this._handleSaveTitle(q.id, e.target.value)
+                            if (e.key === 'Escape') this.editingExcerptId = ''
+                          }}
+                          @blur=${(e) => this._handleSaveTitle(q.id, e.target.value)}
+                        />
+                      `
+                    : q.title || html`<span style="color: #999; font-weight: 400;">(sem título)</span>`}
+                </div>
+                <span class="quote-text">“${q.text}”</span>
+                <div class="excerpt-meta">
+                  ${q.start != null ? html`posição ${q.start}–${q.end} · ` : ''}${new Date(q.createdAt).getTime() > 0
+                    ? new Date(q.createdAt).toLocaleString('pt-BR')
+                    : ''}
+                </div>
                 <div class="quote-footer">
-                  <span class="code-chip" style="background-color: ${code.color};">
-                    ${code.name}
+                  ${code
+                    ? html`<span class="code-chip" style="background-color: ${code.color};">${code.name}</span>`
+                    : html`<span></span>`}
+                  <span>
+                    <button class="link-btn" @click=${() => this._goToExcerpt(q)}>Ir para</button>
+                    <button
+                      class="link-btn"
+                      @click=${async () => {
+                        this.editingExcerptId = q.id
+                        await this.updateComplete
+                        this.shadowRoot?.querySelector('.excerpt-title input')?.focus()
+                      }}
+                    >
+                      Renomear
+                    </button>
+                    <button class="remove-btn" @click=${() => this._handleDeleteQuote(q)}>Remover</button>
                   </span>
-                  <button class="remove-btn" @click=${() => this._handleDeleteQuote(q.id)}>
-                    Remover
-                  </button>
                 </div>
               </div>
             `
