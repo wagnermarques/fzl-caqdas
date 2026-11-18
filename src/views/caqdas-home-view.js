@@ -71,20 +71,6 @@ export class CaqdasHomeView extends LitElement {
       flex-wrap: wrap;
       margin-top: 16px;
     }
-
-    .section-title {
-      font-size: 1.3rem;
-      margin: 24px 0 16px 0;
-      color: var(--md-sys-color-on-surface, #1c1b1f);
-    }
-
-    .quote-box {
-      border-left: 4px solid var(--md-sys-color-primary, #006a6a);
-      padding: 12px 16px;
-      background: var(--md-sys-color-surface-container-low, #f8f8f8);
-      margin-bottom: 12px;
-      border-radius: 0 8px 8px 0;
-    }
   `
 
   static properties = {
@@ -189,30 +175,6 @@ export class CaqdasHomeView extends LitElement {
         <div class="metric-card">
           <span class="metric-value">${this.memosCount}</span>
           <span class="metric-label">Memos & Diários</span>
-        </div>
-      </div>
-
-      <h2 class="section-title">Exemplo em Análise: Tecnologia na Educação</h2>
-      <div class="quote-box">
-        <strong>Estudante 1:</strong> "Technology makes classes more interesting, but sometimes I have difficulty accessing the internet."
-        <div style="margin-top: 6px; font-size: 0.85rem; color: #555;">
-          <span style="background: #e8f5e9; color: #2e7d32; padding: 2px 6px; border-radius: 4px; font-weight: 500;">Increased engagement</span>
-          <span style="background: #ffebee; color: #c62828; padding: 2px 6px; border-radius: 4px; font-weight: 500; margin-left: 6px;">Internet connectivity</span>
-        </div>
-      </div>
-
-      <div class="quote-box">
-        <strong>Estudante 2:</strong> "Online activities help me learn at my own pace."
-        <div style="margin-top: 6px; font-size: 0.85rem; color: #555;">
-          <span style="background: #e8f5e9; color: #2e7d32; padding: 2px 6px; border-radius: 4px; font-weight: 500;">Self-paced learning</span>
-        </div>
-      </div>
-
-      <div class="quote-box">
-        <strong>Estudante 3:</strong> "The internet connection is a problem, especially when I need to watch videos."
-        <div style="margin-top: 6px; font-size: 0.85rem; color: #555;">
-          <span style="background: #ffebee; color: #c62828; padding: 2px 6px; border-radius: 4px; font-weight: 500;">Internet connectivity</span>
-          <span style="background: #ffebee; color: #c62828; padding: 2px 6px; border-radius: 4px; font-weight: 500; margin-left: 6px;">Access to digital resources</span>
         </div>
       </div>
     `
