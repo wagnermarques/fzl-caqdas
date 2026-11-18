@@ -110,13 +110,13 @@ Ferramenta para converter gravações de campo em texto de análise.
 :END:
 O coração do software CAQDAS: recortar Unidades de Registro (UR) preservando a Unidade de Contexto (UC), aplicando codificação dedutiva (a priori) ou indutiva (a posteriori).
 
-- [ ] IN_PROGRESS Tarefa 4.0: Leitor de documentos e trechos selecionados (prioridade crítica) [2/6]
+- [ ] IN_PROGRESS Tarefa 4.0: Leitor de documentos e trechos selecionados (prioridade crítica) [4/6]
   Feito em conjunto com o fzl-fund-ui (componente genérico) e o caqdas (persistência).
   - [X] 4.0.1 (fzl-fund-ui) Leitor genérico, fase 1: tela cheia (Fullscreen API + fallback imersivo) e barras compactas (A-/A+, largura de leitura).
-  - [ ] 4.0.2 (fzl-fund-ui) Leitor, fase 2: evento de seleção com offsets + prefix/suffix (W3C Web Annotation), grifos persistíveis (~annotations~), ~anchorSelection()~.
+  - [X] 4.0.2 (fzl-fund-ui) Leitor, fase 2: evento de seleção com offsets + prefix/suffix (W3C Web Annotation), grifos persistíveis (~annotations~), ~anchorSelection()~.
   - [ ] 4.0.3 (fzl-fund-ui, opcional) AppShell em modo de leitura compacto (header denso, sem rodapé).
   - [X] 4.0.4 (caqdas) Modelo de dados do trecho: documento de origem, título dado pelo pesquisador, texto, offsets, contexto, códigos (opcionais), nota, datas. Persistência no navegador, no escopo do usuário.
-  - [-] 4.0.5 (caqdas) Área de Codificação com o novo leitor: selecionar → dar título → salvar; lista de trechos com navegação até o grifo; editar título; remover.
+  - [X] 4.0.5 (caqdas) Área de Codificação com o novo leitor: selecionar → dar título → salvar; lista de trechos com navegação até o grifo; editar título; remover.
   - [ ] 4.0.6 (caqdas) Exportar/importar os trechos em JSON versionado (~caqdas-trechos/v1~); depois, enviar o JSON a um repositório GitHub (push).
 - [ ] TODO Tarefa 4.1: Leitor e Codificador de Textos (~<caqdas-text-coder>~)
   - Reutilização e expansão de ~<fzl-lit-reader-content>~ e ~<fzl-lit-reader-mark-bar>~.

@@ -9,10 +9,15 @@ import '@material/web/icon/icon.js'
 import '@material/web/select/outlined-select.js'
 import '@material/web/select/select-option.js'
 import '@fzl/webcomponents-lit/reader-chapterview'
-import '@fzl/webcomponents-lit/document-reader'
+import {
+  anchorSelection,
+  buildTextQuote,
+  readerBlocksFromText,
+  readerPlainText
+} from '@fzl/webcomponents-lit/document-reader'
 
 const READER_PREFS_KEY = 'reader_prefs_v1'
-const CONTEXT_CHARS = 32
+const DEFAULT_EXCERPT_COLOR = '#f9d65c'
 
 export class CaqdasCodingView extends LitElement {
   static styles = css`
@@ -199,6 +204,19 @@ export class CaqdasCodingView extends LitElement {
       font-size: 0.9rem;
     }
 
+    .quote-list-item.active {
+      border-color: var(--md-sys-color-primary, #006a6a);
+      box-shadow: 0 0 0 1px var(--md-sys-color-primary, #006a6a);
+    }
+
+    .save-excerpt {
+      padding: 6px;
+      background: var(--md-sys-color-surface, #fff);
+      border: 1px solid var(--md-sys-color-outline-variant, #ccc);
+      border-radius: 8px;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    }
+
     .quote-text {
       font-style: italic;
       color: var(--md-sys-color-on-surface, #1c1b1f);
@@ -312,6 +330,7 @@ export class CaqdasCodingView extends LitElement {
     selectionAnchor: { state: true },
     excerptTitle: { state: true },
     editingExcerptId: { state: true },
+    activeExcerptId: { state: true },
     readerPrefs: { state: true }
   }
 
@@ -329,6 +348,7 @@ export class CaqdasCodingView extends LitElement {
     this.selectionAnchor = null
     this.excerptTitle = ''
     this.editingExcerptId = ''
+    this.activeExcerptId = ''
     this.readerPrefs = this._loadReaderPrefs()
     this.readerController = new CaqdasDocxCodingController(this, { fontSize: 16 })
     this.cloudController = new CaqdasPersonalCloudDocsController(this)
@@ -422,6 +442,11 @@ export class CaqdasCodingView extends LitElement {
     this.selectedText = ''
     this.selectionAnchor = null
     this.excerptTitle = ''
+    const reader = this._reader
+    if (reader) {
+      reader.pendingRange = null
+      reader.clearSelection?.()
+    }
   }
 
   // --- leitor ------------------------------------------------------------------------
@@ -449,87 +474,47 @@ export class CaqdasCodingView extends LitElement {
     userData.setItem(READER_PREFS_KEY, JSON.stringify(this.readerPrefs))
   }
 
-  /**
-   * Lê a seleção atual dentro do leitor e calcula a âncora no texto canônico
-   * (reader.plainText): start/end, contexto antes/depois e bloco de origem.
-   * Provisório até a fase 2 do <fzl-document-reader> (evento fzl-reader-selection).
-   */
-  _readSelectionAnchor() {
-    const reader = this._reader
-    if (!reader) return null
-    const root = reader.shadowRoot
-    const sel = (root && typeof root.getSelection === 'function' ? root.getSelection() : null) || window.getSelection()
-    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null
-    const raw = sel.toString()
-    const text = raw.trim()
-    if (!text) return null
-
-    const plain = String(reader.plainText || '')
-    let start = -1
-    let blockIndex = null
-    try {
-      const range = sel.getRangeAt(0)
-      const startNode = range.startContainer
-      const el = startNode.nodeType === Node.ELEMENT_NODE ? startNode : startNode.parentElement
-      const block = el?.closest?.('[data-offset]')
-      if (block && root?.contains(block)) {
-        const pre = document.createRange()
-        pre.setStart(block, 0)
-        pre.setEnd(range.startContainer, range.startOffset)
-        start = Number(block.dataset.offset) + pre.toString().length + (raw.length - raw.trimStart().length)
-        blockIndex = Number(block.dataset.index)
-        if (plain.slice(start, start + text.length) !== text) start = -1
-      }
-    } catch {
-      start = -1
-    }
-    if (start < 0) {
-      // Fallback: procura o texto no documento (primeira ocorrência).
-      start = plain.indexOf(text)
-      if (start < 0) return { text, start: null, end: null, prefix: '', suffix: '', blockIndex: null }
-      const offsets = reader.blockOffsets || []
-      blockIndex = null
-      for (let i = 0; i < offsets.length; i++) {
-        const o = offsets[i]
-        const begin = typeof o === 'number' ? o : o?.start
-        if (typeof begin === 'number' && begin <= start) blockIndex = i
-      }
-    }
-    const end = start + text.length
-    return {
-      text,
-      start,
-      end,
-      prefix: plain.slice(Math.max(0, start - CONTEXT_CHARS), start),
-      suffix: plain.slice(end, end + CONTEXT_CHARS),
-      blockIndex
-    }
+  /** Seleção feita no leitor (fzl-reader-selection): âncora W3C + trecho pendente visível. */
+  _handleReaderSelection(e) {
+    const { text, start, end, prefix, suffix, blockIndex } = e.detail || {}
+    if (!text) return
+    this.selectionAnchor = { text, start, end, prefix, suffix, blockIndex: blockIndex ?? null }
+    this.selectedText = text
+    this.selectedUrId = ''
+    if (this._reader) this._reader.pendingRange = { start, end }
+    void this._focusTitleInput()
   }
 
-  _handleReaderPointerUp() {
-    // Pequeno atraso para o navegador concluir a seleção.
-    setTimeout(() => {
-      const anchor = this._readSelectionAnchor()
-      if (!anchor) return
-      this.selectionAnchor = anchor
-      this.selectedText = anchor.text
-      this.selectedUrId = ''
-      this.updateComplete.then(() => this.shadowRoot?.querySelector('.save-excerpt input')?.focus())
-    }, 30)
+  /** O popover só aparece depois da atualização do leitor: espera os dois antes de focar. */
+  async _focusTitleInput() {
+    await this.updateComplete
+    await this._reader?.updateComplete
+    requestAnimationFrame(() => this.shadowRoot?.querySelector('.save-excerpt input')?.focus({ preventScroll: true }))
   }
 
-  _syncReaderDoc() {
-    const doc = this.documents.find((d) => d.id === this.selectedDocId)
-    if (doc) {
-      this.readerController.openDocument({
-        id: doc.id,
-        name: doc.title,
-        category: doc.type === 'docx' ? 'docx' : doc.type === 'pdf' ? 'pdf' : 'text',
-        extension: doc.extension || (doc.type === 'docx' ? '.docx' : '.txt'),
-        textContent: doc.content || '',
-        blocks: doc.docxBlocks || undefined
-      })
-    }
+  _handleReaderSelectionClear() {
+    // O leitor mantém a seleção enquanto o foco está no formulário; aqui ela sumiu de fato.
+    if (this.excerptTitle.trim()) return
+    this.selectedText = ''
+    this.selectionAnchor = null
+    if (this._reader) this._reader.pendingRange = null
+  }
+
+  /** Texto canônico do documento (o mesmo que reader.plainText), para ancorar os trechos. */
+  _plainTextOf(doc) {
+    if (!doc) return ''
+    const blocks = Array.isArray(doc.docxBlocks) && doc.docxBlocks.length ? doc.docxBlocks : readerBlocksFromText(doc.content || '')
+    return readerPlainText(blocks)
+  }
+
+  /** Reancora cada trecho no texto atual (posição, ou citação + contexto se o texto mudou). */
+  _anchoredExcerpts(doc, excerpts, codeMap) {
+    const plain = this._plainTextOf(doc)
+    return excerpts.map((q) => {
+      const pos = plain ? anchorSelection(plain, q) : null
+      const code = q.codeId ? codeMap.get(q.codeId) : null
+      return { q, pos, color: code?.color || DEFAULT_EXCERPT_COLOR }
+    })
   }
 
   _selectRegistrationUnit(ur) {
@@ -537,17 +522,13 @@ export class CaqdasCodingView extends LitElement {
     this.selectedText = ur.text
     const plain = String(this._reader?.plainText || '')
     const start = plain.indexOf(ur.text)
-    this.selectionAnchor =
-      start < 0
-        ? { text: ur.text, start: null, end: null, prefix: '', suffix: '', blockIndex: null }
-        : {
-            text: ur.text,
-            start,
-            end: start + ur.text.length,
-            prefix: plain.slice(Math.max(0, start - CONTEXT_CHARS), start),
-            suffix: plain.slice(start + ur.text.length, start + ur.text.length + CONTEXT_CHARS),
-            blockIndex: null
-          }
+    if (start < 0) {
+      this.selectionAnchor = { text: ur.text, start: null, end: null, prefix: '', suffix: '', blockIndex: null }
+      return
+    }
+    const end = start + ur.text.length
+    this.selectionAnchor = { ...buildTextQuote(plain, start, end), start, end, blockIndex: null }
+    if (this._reader) this._reader.pendingRange = { start, end }
   }
 
   // --- trechos ------------------------------------------------------------------------
@@ -572,12 +553,8 @@ export class CaqdasCodingView extends LitElement {
       alert('Não foi possível salvar o trecho.')
       return
     }
+    this.activeExcerptId = saved.id
     this._clearSelection()
-    try {
-      ;(this._reader?.shadowRoot?.getSelection?.() || window.getSelection())?.removeAllRanges()
-    } catch {
-      // ignore
-    }
   }
 
   _handleSaveTitle(quoteId, value) {
@@ -592,17 +569,22 @@ export class CaqdasCodingView extends LitElement {
     researchStorage.removeQuotation(this.selectedDocId, quote.id)
   }
 
-  _goToExcerpt(quote) {
+  async _goToExcerpt(quote) {
     const reader = this._reader
-    const root = reader?.shadowRoot
-    if (!root) return
-    let index = quote.blockIndex
-    if (index == null && quote.start != null) {
-      const blocks = Array.from(root.querySelectorAll('[data-offset]'))
-      for (const b of blocks) if (Number(b.dataset.offset) <= quote.start) index = Number(b.dataset.index)
-    }
-    const el = index != null ? root.querySelector(`[data-index="${index}"]`) : null
-    el?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    if (!reader) return
+    this.activeExcerptId = quote.id
+    await this.updateComplete
+    const shown = await reader.scrollToAnnotation?.(quote.id)
+    if (!shown) alert('Este trecho não foi encontrado no texto atual do documento.')
+  }
+
+  _handleAnnotationClick(e) {
+    const id = e.detail?.id
+    if (!id) return
+    this.activeExcerptId = id
+    this.updateComplete.then(() =>
+      this.shadowRoot?.querySelector(`[data-excerpt-id="${CSS.escape(id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+    )
   }
 
   _exportExcerpts() {
@@ -667,6 +649,12 @@ export class CaqdasCodingView extends LitElement {
       color: '#006a6a'
     }))
     const excerpts = doc ? researchStorage.getDocumentExcerpts(doc.id) : []
+    const anchored = this._anchoredExcerpts(doc, excerpts, codeMap)
+    const annotations = anchored
+      .filter((a) => a.pos)
+      .map((a) => ({ id: a.q.id, start: a.pos.start, end: a.pos.end, color: a.color, title: a.q.title }))
+    const orphanIds = new Set(anchored.filter((a) => !a.pos).map((a) => a.q.id))
+    const posById = new Map(anchored.map((a) => [a.q.id, a.pos]))
     const blocks = Array.isArray(doc?.docxBlocks) && doc.docxBlocks.length ? doc.docxBlocks : null
     const wordCount = this.readerController.document?.wordCount || doc?.content?.split(/\s+/).filter(Boolean).length || 0
 
@@ -762,16 +750,17 @@ export class CaqdasCodingView extends LitElement {
               .blocks=${blocks}
               .fontSize=${this.readerPrefs.fontSize}
               .readingWidth=${this.readerPrefs.readingWidth}
-              @pointerup=${this._handleReaderPointerUp}
-              @keyup=${(e) => {
-                if (e.shiftKey || e.key === 'Shift') this._handleReaderPointerUp()
-              }}
+              .annotations=${annotations}
+              active-annotation=${this.activeExcerptId}
+              @fzl-reader-selection=${this._handleReaderSelection}
+              @fzl-reader-selection-clear=${this._handleReaderSelectionClear}
+              @fzl-reader-annotation-click=${this._handleAnnotationClick}
               @fzl-reader-preferences-change=${this._handleReaderPrefs}
             >
               ${this.selectedText
                 ? html`
                     <form
-                      slot="actions"
+                      slot="selection-popover"
                       class="save-excerpt"
                       @submit=${(e) => {
                         e.preventDefault()
@@ -793,9 +782,13 @@ export class CaqdasCodingView extends LitElement {
                       <button type="submit" class="tool-btn primary" ?disabled=${!this.excerptTitle.trim()}>
                         <md-icon>bookmark_add</md-icon>Salvar
                       </button>
+                      <button type="button" class="tool-btn" title="Cancelar (Esc)" @click=${() => this._clearSelection()}>
+                        <md-icon>close</md-icon>
+                      </button>
                     </form>
                   `
-                : html`
+                : ''}
+              ${html`
                     ${doc && researchStorage.hasLocalDocument(doc)
                       ? html`
                           <button
@@ -872,7 +865,10 @@ export class CaqdasCodingView extends LitElement {
           ` : excerpts.map(q => {
             const code = q.codeId ? codeMap.get(q.codeId) || { name: 'Código removido', color: '#999' } : null
             return html`
-              <div class="quote-list-item">
+              <div
+                class="quote-list-item ${this.activeExcerptId === q.id ? 'active' : ''}"
+                data-excerpt-id=${q.id}
+              >
                 <div class="excerpt-title">
                   ${this.editingExcerptId === q.id
                     ? html`
@@ -891,7 +887,9 @@ export class CaqdasCodingView extends LitElement {
                 </div>
                 <span class="quote-text">“${q.text}”</span>
                 <div class="excerpt-meta">
-                  ${q.start != null ? html`posição ${q.start}–${q.end} · ` : ''}${new Date(q.createdAt).getTime() > 0
+                  ${orphanIds.has(q.id)
+                    ? html`<strong style="color: #b45309;">não encontrado no texto atual</strong> · `
+                    : html`posição ${posById.get(q.id).start}–${posById.get(q.id).end} · `}${new Date(q.createdAt).getTime() > 0
                     ? new Date(q.createdAt).toLocaleString('pt-BR')
                     : ''}
                 </div>
