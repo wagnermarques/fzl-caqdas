@@ -18,6 +18,10 @@ import {
 import { researchStorage } from '../services/storage-service.js'
 
 const DRIVE_SESSION_TOKEN_KEY = 'fzl-caqdas:drive-session-token'
+// Uma única busca/criação da pasta inicial por provedor por vez, compartilhada entre
+// todas as instâncias do controller. Evita pastas duplicadas quando vários uploads
+// começam em paralelo antes de o ID da pasta estar salvo.
+const homeFolderInflight = new Map()
 
 export function clearCachedCloudTokens() {
   try {
@@ -487,6 +491,18 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
    * no Google Drive ou no OneDrive e salva seu ID real nas configurações locais.
    */
   async ensureCloudHomeFolderId(provider, token) {
+    const cfg = researchStorage.getCloudSyncConfig()
+    const cached = provider === 'onedrive' ? cfg.oneDriveFolderId : provider === 'google-drive' ? cfg.googleDriveFolderId : ''
+    if (cached || !token) return cached || ''
+    const key = `${provider}:${researchStorage.getHomeDirName()}`
+    if (!homeFolderInflight.has(key)) {
+      const pending = this._resolveCloudHomeFolderId(provider, token).finally(() => homeFolderInflight.delete(key))
+      homeFolderInflight.set(key, pending)
+    }
+    return homeFolderInflight.get(key)
+  }
+
+  async _resolveCloudHomeFolderId(provider, token) {
     const cloudCfg = researchStorage.getCloudSyncConfig()
     const homeDirName = researchStorage.getHomeDirName()
 
@@ -496,10 +512,12 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
 
       const escapedName = homeDirName.replace(/\\/g, '\\\\').replace(/'/g, "\\'")
       const query = encodeURIComponent(
-        `name='${escapedName}' and mimeType='application/vnd.google-apps.folder' and trashed=false`
+        `name='${escapedName}' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false`
       )
+      // Com o escopo drive.file só aparecem pastas criadas por este cliente OAuth.
+      // Se houver mais de uma, usa sempre a mais antiga para todos os dispositivos convergirem.
       const searchRes = await fetch(
-        `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name)&pageSize=1`,
+        `https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,createdTime)&orderBy=createdTime&pageSize=10`,
         {
           headers: { Authorization: `Bearer ${token}` }
         }
@@ -507,7 +525,21 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
 
       if (searchRes.ok) {
         const searchData = await searchRes.json()
-        const foundId = searchData?.files?.[0]?.id
+        const candidates = (searchData?.files || []).map((f) => f.id)
+        let foundId = candidates[0]
+        if (candidates.length > 1) {
+          console.warn(`[CAQDAS] ${candidates.length} pastas "${homeDirName}" visíveis no Google Drive; usando a mais antiga que contém arquivos.`)
+          for (const id of candidates) {
+            const q = encodeURIComponent(`'${id}' in parents and trashed=false`)
+            const childRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id)&pageSize=1`, {
+              headers: { Authorization: `Bearer ${token}` }
+            })
+            if (childRes.ok && ((await childRes.json())?.files || []).length > 0) {
+              foundId = id
+              break
+            }
+          }
+        }
         if (foundId) {
           researchStorage.saveCloudSyncConfig({ googleDriveFolderId: foundId })
           return foundId
@@ -773,6 +805,118 @@ export class CaqdasPersonalCloudDocsController extends FzlPersonalCloudDocsContr
    * validação de escopo Drive, recuperação automática de 401/403 por escopo insuficiente
    * e resolução da pasta inicial configurada (APP-CAQDAS-HOME-DIR).
    */
+  /** Provedor de nuvem ativo, com a mesma regra usada no envio de arquivos. */
+  _activeCloudProvider() {
+    const cloudCfg = this._syncInternalAuthConfig()
+    const user = this.currentUser
+    const useOneDrive =
+      cloudCfg.provider === 'onedrive' || (cloudCfg.provider !== 'google-drive' && user?.provider === 'microsoft')
+    return useOneDrive ? 'onedrive' : 'google-drive'
+  }
+
+  /**
+   * Lista os arquivos da pasta inicial na nuvem (somente os que este app consegue ver:
+   * com drive.file, os criados por ele). Não abre janela de login se `interactive` for false
+   * e não houver token em cache.
+   * @returns {Promise<{ success: boolean, provider: string, folderId?: string, files?: Array, error?: string }>}
+   */
+  async listCloudHomeFiles({ interactive = true } = {}) {
+    const provider = this._activeCloudProvider()
+    try {
+      if (!interactive) {
+        const probe = provider === 'google-drive' ? await this.probeSessionDriveScope() : { hasDriveScope: true }
+        if (!probe.hasDriveScope) return { success: false, provider, error: 'sem-token' }
+      }
+      const token = await this.resolveCloudAccessToken(provider)
+      if (!token) return { success: false, provider, error: 'Sem token de acesso à nuvem.' }
+      const folderId = await this.ensureCloudHomeFolderId(provider, token)
+      if (!folderId) return { success: false, provider, error: 'Pasta inicial não encontrada na nuvem.' }
+
+      const files = []
+      if (provider === 'google-drive') {
+        // Inclui eventuais pastas duplicadas com o mesmo nome criadas por este app.
+        const escapedName = researchStorage.getHomeDirName().replace(/\\/g, '\\\\').replace(/'/g, "\\'")
+        const folderQuery = encodeURIComponent(
+          `name='${escapedName}' and mimeType='application/vnd.google-apps.folder' and 'root' in parents and trashed=false`
+        )
+        const foldersRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${folderQuery}&fields=files(id)&pageSize=20`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        const folderIds = new Set([folderId])
+        if (foldersRes.ok) ((await foldersRes.json())?.files || []).forEach((f) => folderIds.add(f.id))
+        const parentsClause = [...folderIds].map((id) => `'${id}' in parents`).join(' or ')
+        let pageToken = ''
+        do {
+          const q = encodeURIComponent(`(${parentsClause}) and trashed=false`)
+          const url =
+            `https://www.googleapis.com/drive/v3/files?q=${q}&pageSize=200` +
+            `&fields=nextPageToken,files(id,name,mimeType,size,createdTime,modifiedTime,webViewLink)` +
+            (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '')
+          const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+          if (!res.ok) return { success: false, provider, error: `HTTP ${res.status}` }
+          const data = await res.json()
+          for (const f of data.files || []) {
+            files.push({
+              id: f.id,
+              name: f.name,
+              mimeType: f.mimeType || '',
+              size: Number(f.size || 0),
+              createdTime: f.createdTime,
+              webViewLink: f.webViewLink || `https://drive.google.com/file/d/${f.id}/view`
+            })
+          }
+          pageToken = data.nextPageToken || ''
+        } while (pageToken)
+      } else {
+        let url = `https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(folderId)}/children?$select=id,name,size,file,folder,webUrl,createdDateTime&$top=200`
+        while (url) {
+          const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+          if (!res.ok) return { success: false, provider, error: `HTTP ${res.status}` }
+          const data = await res.json()
+          for (const f of data.value || []) {
+            files.push({
+              id: f.id,
+              name: f.name,
+              mimeType: f.folder ? 'folder' : f.file?.mimeType || '',
+              size: Number(f.size || 0),
+              createdTime: f.createdDateTime,
+              webViewLink: f.webUrl
+            })
+          }
+          url = data['@odata.nextLink'] || ''
+        }
+      }
+      return { success: true, provider, folderId, files }
+    } catch (err) {
+      return { success: false, provider, error: err?.message || String(err) }
+    }
+  }
+
+  /**
+   * Baixa o conteúdo de um arquivo sincronizado para guardar uma cópia local (IndexedDB).
+   * @returns {Promise<File|null>}
+   */
+  async downloadCloudFile(doc) {
+    const provider = doc?.storageProvider === 'onedrive' ? 'onedrive' : 'google-drive'
+    const fileId = doc?.googleDriveFileId
+    if (!fileId) return null
+    const url =
+      provider === 'onedrive'
+        ? `https://graph.microsoft.com/v1.0/me/drive/items/${encodeURIComponent(fileId)}/content`
+        : `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const token = await this.resolveCloudAccessToken(provider, { forceRefresh: attempt > 0 })
+      if (!token) return null
+      const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } })
+      if (res.ok) {
+        const blob = await res.blob()
+        return new File([blob], doc.title || fileId, { type: blob.type || doc.mimeType || 'application/octet-stream' })
+      }
+      if (res.status !== 401) return null
+    }
+    return null
+  }
+
   /**
    * Renomeia um arquivo já sincronizado no Google Drive ou OneDrive.
    * @returns {Promise<{ success: boolean, error?: string }>}

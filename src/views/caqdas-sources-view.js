@@ -192,6 +192,16 @@ export class CaqdasSourcesView extends LitElement {
       background: #bae6fd;
     }
 
+    .cloud-pull-bar {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 12px;
+      margin: 0 0 12px;
+      font-size: 0.88rem;
+      color: #475569;
+    }
+
     .pending-list {
       display: flex;
       flex-direction: column;
@@ -304,6 +314,9 @@ export class CaqdasSourcesView extends LitElement {
     newContent: { state: true },
     selectedDocForReading: { state: true },
     pendingCaptures: { state: true },
+    cloudPullStatus: { state: true },
+    _cloudPulling: { state: true },
+    _downloadingDocId: { state: true },
     _syncingDocIds: { state: true }
   }
 
@@ -324,6 +337,10 @@ export class CaqdasSourcesView extends LitElement {
     this.newContent = ''
     this.selectedDocForReading = null
     this.pendingCaptures = []
+    this.cloudPullStatus = ''
+    this._cloudPulling = false
+    this._downloadingDocId = ''
+    this._autoPulledFor = ''
   }
 
   disconnectedCallback() {
@@ -384,6 +401,13 @@ export class CaqdasSourcesView extends LitElement {
       this.updateComplete.then(() => {
         this._bindControllers()
         if (user) void this.cloudController.probeSessionDriveScope()
+        // Ao entrar em outro dispositivo, traz automaticamente os arquivos já salvos na nuvem
+        // (sem abrir janela de login; se faltar permissão, o botão "Buscar na nuvem" resolve).
+        const key = user?.email || user?.id || ''
+        if (key && this._autoPulledFor !== key && this._isCloudActive()) {
+          this._autoPulledFor = key
+          void this._pullFromCloud({ interactive: false })
+        }
       })
     })
 
@@ -425,7 +449,60 @@ export class CaqdasSourcesView extends LitElement {
     this.updateComplete.then(() => this._refreshFileManager())
   }
 
+  _isCloudActive() {
+    const provider = researchStorage.getEffectivePersistenceProvider(this.currentUser)
+    return (
+      researchStorage.isCloudAuthenticated(this.currentUser) && (provider === 'google-drive' || provider === 'onedrive')
+    )
+  }
+
+  /** Lista a pasta inicial na nuvem e registra no corpus os arquivos que ainda não estão aqui. */
+  async _pullFromCloud({ interactive = true } = {}) {
+    if (this._cloudPulling) return
+    this._cloudPulling = true
+    if (interactive) this.cloudPullStatus = '🔄 Buscando arquivos na nuvem...'
+    try {
+      const result = await this.cloudController.listCloudHomeFiles({ interactive })
+      if (!result.success) {
+        if (interactive || result.error !== 'sem-token') {
+          this.cloudPullStatus = `⚠️ Não foi possível listar a pasta na nuvem: ${result.error}`
+        }
+        return
+      }
+      const added = researchStorage.importCloudFiles(result.files, result.provider)
+      const label = getPersistenceProviderLabel(result.provider)
+      this.cloudPullStatus =
+        added > 0
+          ? `☁️ ${added} arquivo(s) de ${label} adicionados ao corpus. Eles são baixados para este dispositivo quando você os abre.`
+          : interactive
+            ? `✔ Corpus em dia com ${label} (${result.files.length} arquivo(s) na pasta).`
+            : ''
+      this._loadDocs()
+    } finally {
+      this._cloudPulling = false
+    }
+  }
+
+  /** Garante uma cópia local (IndexedDB) de um documento que só existe na nuvem. */
+  async _ensureLocalCopy(doc) {
+    if (!doc || researchStorage.hasLocalDocument(doc) || !doc.googleDriveFileId) return Boolean(doc)
+    this._downloadingDocId = doc.id
+    try {
+      const file = await this.cloudController.downloadCloudFile(doc)
+      if (!file) return false
+      await researchStorage.saveBinaryFile(doc.id, file)
+      if (!doc.size) researchStorage.updateDocument(doc.id, { size: file.size })
+      this._loadDocs()
+      return true
+    } catch {
+      return false
+    } finally {
+      this._downloadingDocId = ''
+    }
+  }
+
   async _openDocFromDevice(doc) {
+    await this._ensureLocalCopy(doc)
     const res = await researchStorage.openLocalDocument(doc)
     if (!res.ok) {
       if (doc?.externalViewerUrl) {
@@ -900,6 +977,9 @@ export class CaqdasSourcesView extends LitElement {
     const doc = this.documents.find((d) => d.id === file.id)
     if (doc) {
       this.selectedDocForReading = doc
+      if (!researchStorage.hasLocalDocument(doc) && doc.googleDriveFileId) {
+        void this._ensureLocalCopy(doc)
+      }
     }
   }
 
@@ -1044,6 +1124,19 @@ export class CaqdasSourcesView extends LitElement {
                 <code>/${homeDirName}</code> e clique em <strong>Continuar Leitura</strong>.
               </div>
 
+              ${allowCloudUpload
+                ? html`
+                    <div class="cloud-pull-bar">
+                      <md-outlined-button ?disabled=${this._cloudPulling} @click=${() => void this._pullFromCloud()}>
+                        <md-icon slot="icon">cloud_download</md-icon>
+                        ${this._cloudPulling ? 'Buscando...' : `Buscar arquivos em ${getPersistenceProviderLabel(rawProvider)}`}
+                      </md-outlined-button>
+                      <span>${this.cloudPullStatus ||
+                        'Traz para este dispositivo a lista de arquivos já salvos na sua nuvem (por exemplo, enviados de outro computador).'}</span>
+                    </div>
+                  `
+                : ''}
+
               <fzl-file-manager
                 view-mode="table"
                 current-folder=${activeFolder}
@@ -1077,7 +1170,9 @@ export class CaqdasSourcesView extends LitElement {
                       <div>
                         <strong>${this.selectedDocForReading.title}</strong>
                         <span style="color: #64748b; margin-left: 8px;">
-                          ${researchStorage.hasLocalDocument(this.selectedDocForReading)
+                          ${this._downloadingDocId === this.selectedDocForReading.id
+                            ? '⬇️ Baixando da nuvem para este dispositivo...'
+                            : researchStorage.hasLocalDocument(this.selectedDocForReading)
                             ? '📱 Disponível neste dispositivo'
                             : this.selectedDocForReading.externalViewerUrl
                               ? '☁️ Somente na nuvem'

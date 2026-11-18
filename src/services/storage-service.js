@@ -546,6 +546,77 @@ class ResearchStorageService {
     return newDoc
   }
 
+  /**
+   * Registra no corpus local os arquivos que já existem na pasta inicial da nuvem
+   * (por exemplo, enviados de outro dispositivo). O conteúdo não é baixado aqui:
+   * fica disponível pelo link da nuvem e é baixado sob demanda ao abrir.
+   * @returns {number} quantidade de documentos adicionados
+   */
+  importCloudFiles(files, provider) {
+    const docs = this._data.documents
+    const knownIds = new Set(docs.map((d) => d.googleDriveFileId).filter(Boolean))
+    let added = 0
+    let linked = 0
+    for (const f of files || []) {
+      if (!f?.id || knownIds.has(f.id)) continue
+      const mime = String(f.mimeType || '')
+      // Pastas e documentos nativos do Google (Docs/Sheets) não têm conteúdo binário para baixar.
+      if (mime === 'folder' || mime.startsWith('application/vnd.google-apps.')) continue
+      const name = String(f.name || 'arquivo')
+      const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')).toLowerCase() : ''
+      // Mesmo arquivo já registrado localmente mas sem o ID remoto (envio antigo): só vincula.
+      const sameLocal = docs.find((d) => !d.googleDriveFileId && d.title === name && (!f.size || !d.size || d.size === f.size))
+      const remote = {
+        status: 'synced',
+        storageProvider: provider,
+        googleDriveFileId: f.id,
+        externalViewerUrl: f.webViewLink,
+        externalViewerLabel: provider === 'onedrive' ? 'Abrir no OneDrive ↗' : 'Abrir no Google Drive ↗',
+        syncedAt: Date.now()
+      }
+      if (sameLocal) {
+        Object.assign(sameLocal, remote)
+        knownIds.add(f.id)
+        linked++
+        continue
+      }
+      const type = mime.startsWith('audio/')
+        ? 'audio'
+        : mime.startsWith('video/')
+          ? 'video'
+          : mime.startsWith('image/')
+            ? 'image'
+            : ext === '.pdf' || mime === 'application/pdf'
+              ? 'pdf'
+              : ext === '.docx'
+                ? 'docx'
+                : ext === '.csv' || ext === '.json'
+                  ? ext.slice(1)
+                  : 'interview'
+      const subfolder = type === 'audio' ? 'capturas-audio' : type === 'image' || type === 'video' ? 'capturas-camera' : 'entrevistas'
+      docs.push({
+        id: `doc-cloud-${f.id}`,
+        title: name,
+        participant: 'Importado da nuvem',
+        group: 'Corpus da Nuvem',
+        folder: this.formatPersistenceFolder(subfolder),
+        type,
+        extension: ext,
+        mimeType: mime,
+        size: f.size || 0,
+        uploadedAt: f.createdTime ? Date.parse(f.createdTime) : Date.now(),
+        tags: ['nuvem', type, ...(type === 'audio' ? ['transcricao-pendente'] : [])],
+        content: '',
+        quotations: [],
+        ...remote
+      })
+      knownIds.add(f.id)
+      added++
+    }
+    if (added > 0 || linked > 0) this._saveData(this._data)
+    return added
+  }
+
   addQuotation(docId, quotation) {
     const doc = this._data.documents.find(d => d.id === docId)
     if (!doc) return null
