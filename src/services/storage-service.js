@@ -37,6 +37,59 @@ const DEFAULT_CLOUD_CONFIG = {
   autoSyncToCloud: true
 }
 
+// --- Modelo do trecho selecionado ---------------------------------------------------
+export const EXCERPT_SCHEMA = 'caqdas-trechos/v1'
+
+function newExcerptId() {
+  const rand =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
+  return `quote-${rand}`
+}
+
+const toInt = (value) => (Number.isInteger(value) && value >= 0 ? value : null)
+
+/**
+ * Formato canônico de um trecho. Aceita os excertos antigos ({ codeId, text,
+ * startOffset, endOffset }) e devolve sempre todos os campos:
+ * - docId / docTitle: material de origem (o título é uma cópia para leitura do JSON);
+ * - title: do que se trata o trecho (escrito pelo pesquisador);
+ * - text: o texto selecionado;
+ * - start / end: posição em caracteres no texto do documento (TextPositionSelector);
+ * - prefix / suffix: contexto antes/depois, para reencontrar o trecho se o texto mudar (TextQuoteSelector);
+ * - blockIndex: parágrafo/bloco de origem, quando o leitor informar;
+ * - codeId: código aplicado (opcional); note: anotação livre;
+ * - createdAt / updatedAt: ISO 8601.
+ */
+export function normalizeExcerpt(raw, doc = null) {
+  const q = raw || {}
+  const start = toInt(q.start ?? q.startOffset)
+  const end = toInt(q.end ?? q.endOffset)
+  // Excertos antigos gravavam sempre 0..text.length; só vale se o documento começar mesmo pelo trecho.
+  const text = String(q.text || '').trim()
+  const legacyFakeRange =
+    start === 0 && end === String(q.text || '').length && !q.prefix && !q.suffix &&
+    !String(doc?.content || '').startsWith(text)
+  const createdAt = typeof q.createdAt === 'string' ? q.createdAt : new Date(0).toISOString()
+  return {
+    id: String(q.id || ''),
+    docId: String(doc?.id || q.docId || ''),
+    docTitle: String(doc?.title || q.docTitle || ''),
+    title: String(q.title || '').trim(),
+    text,
+    start: legacyFakeRange ? null : start,
+    end: legacyFakeRange ? null : end,
+    prefix: String(q.prefix || ''),
+    suffix: String(q.suffix || ''),
+    blockIndex: toInt(q.blockIndex),
+    codeId: q.codeId ? String(q.codeId) : null,
+    note: String(q.note || ''),
+    createdAt,
+    updatedAt: typeof q.updatedAt === 'string' ? q.updatedAt : createdAt
+  }
+}
+
 class ResearchStorageService {
   constructor() {
     this._binaryFiles = new Map()
@@ -620,17 +673,43 @@ class ResearchStorageService {
     return added
   }
 
-  addQuotation(docId, quotation) {
-    const doc = this._data.documents.find(d => d.id === docId)
+  // --- Trechos selecionados (excertos / quotations) ---------------------------------
+  // Cada trecho fica no próprio documento (doc.quotations), no escopo do usuário.
+  // Modelo (EXCERPT_SCHEMA): ver normalizeExcerpt() abaixo.
+
+  /**
+   * Salva um trecho selecionado de um documento.
+   * @param {string} docId documento de origem
+   * @param {object} excerpt { text, title?, start?, end?, prefix?, suffix?, blockIndex?, codeId?, note? }
+   */
+  addQuotation(docId, excerpt) {
+    const doc = this._data.documents.find((d) => d.id === docId)
     if (!doc) return null
-    const newQuote = {
-      id: `quote-${Date.now()}`,
-      ...quotation
-    }
+    const now = new Date().toISOString()
+    const newQuote = normalizeExcerpt(
+      { ...excerpt, id: excerpt?.id || newExcerptId(), createdAt: excerpt?.createdAt || now, updatedAt: now },
+      doc
+    )
+    if (!newQuote.text) return null
     doc.quotations = doc.quotations || []
     doc.quotations.push(newQuote)
     this._saveData(this._data)
     return newQuote
+  }
+
+  /** Atualiza título, nota, código ou âncora de um trecho. */
+  updateQuotation(docId, quoteId, updates) {
+    const doc = this._data.documents.find((d) => d.id === docId)
+    const index = doc?.quotations?.findIndex((q) => q.id === quoteId) ?? -1
+    if (index < 0) return null
+    const current = doc.quotations[index]
+    const next = normalizeExcerpt(
+      { ...current, ...updates, id: current.id, createdAt: current.createdAt, updatedAt: new Date().toISOString() },
+      doc
+    )
+    doc.quotations[index] = next
+    this._saveData(this._data)
+    return next
   }
 
   removeQuotation(docId, quoteId) {
@@ -638,6 +717,92 @@ class ResearchStorageService {
     if (!doc || !doc.quotations) return
     doc.quotations = doc.quotations.filter(q => q.id !== quoteId)
     this._saveData(this._data)
+  }
+
+  /** Trechos de um documento, já no formato atual (ordem de leitura). */
+  getDocumentExcerpts(docId) {
+    const doc = this._data.documents.find((d) => d.id === docId)
+    return (doc?.quotations || [])
+      .map((q) => normalizeExcerpt(q, doc))
+      .sort((a, b) => (a.start ?? Infinity) - (b.start ?? Infinity) || a.createdAt.localeCompare(b.createdAt))
+  }
+
+  /** Todos os trechos do projeto, com o documento de origem. */
+  getAllExcerpts() {
+    return this.getDocuments().flatMap((doc) => (doc.quotations || []).map((q) => normalizeExcerpt(q, doc)))
+  }
+
+  /**
+   * JSON versionado com os trechos do projeto (para baixar ou enviar ao GitHub).
+   * Inclui os documentos de origem e os códigos referenciados, para o arquivo se explicar sozinho.
+   */
+  exportExcerpts() {
+    const docs = this.getDocuments()
+    const excerpts = this.getAllExcerpts()
+    const usedDocs = new Set(excerpts.map((e) => e.docId))
+    const usedCodes = new Set(excerpts.map((e) => e.codeId).filter(Boolean))
+    const project = this.getProject() || {}
+    return {
+      schema: EXCERPT_SCHEMA,
+      exportedAt: new Date().toISOString(),
+      project: { id: project.id || '', name: project.name || '' },
+      documents: docs
+        .filter((d) => usedDocs.has(d.id))
+        .map((d) => ({
+          id: d.id,
+          title: d.title || '',
+          type: d.type || '',
+          participant: d.participant || '',
+          folder: d.folder || '',
+          ...(d.googleDriveFileId
+            ? {
+                remote: {
+                  provider: d.storageProvider === 'onedrive' ? 'onedrive' : 'google-drive',
+                  fileId: d.googleDriveFileId,
+                  url: d.externalViewerUrl || ''
+                }
+              }
+            : {})
+        })),
+      codes: this.getCodes()
+        .filter((c) => usedCodes.has(c.id))
+        .map((c) => ({ id: c.id, name: c.name, color: c.color, categoryId: c.categoryId || null })),
+      excerpts
+    }
+  }
+
+  /**
+   * Importa trechos de um JSON exportado (mescla por id; o mais recente vence).
+   * Trechos de documentos que não existem neste corpus são ignorados (procura por id e, depois, por título).
+   * @returns {{ added: number, updated: number, skipped: number }}
+   */
+  importExcerpts(payload) {
+    if (!payload || payload.schema !== EXCERPT_SCHEMA || !Array.isArray(payload.excerpts)) {
+      throw new Error(`Arquivo inválido: esperado um JSON "${EXCERPT_SCHEMA}".`)
+    }
+    const docs = this.getDocuments()
+    const sourceTitles = new Map((payload.documents || []).map((d) => [d.id, d.title]))
+    const result = { added: 0, updated: 0, skipped: 0 }
+    for (const raw of payload.excerpts) {
+      const title = sourceTitles.get(raw?.docId) || raw?.docTitle
+      const doc = docs.find((d) => d.id === raw?.docId) || (title ? docs.find((d) => d.title === title) : null)
+      if (!doc || !raw?.id || !raw?.text) {
+        result.skipped++
+        continue
+      }
+      doc.quotations = doc.quotations || []
+      const index = doc.quotations.findIndex((q) => q.id === raw.id)
+      const incoming = normalizeExcerpt(raw, doc)
+      if (index < 0) {
+        doc.quotations.push(incoming)
+        result.added++
+      } else if (String(incoming.updatedAt) > String(normalizeExcerpt(doc.quotations[index], doc).updatedAt)) {
+        doc.quotations[index] = incoming
+        result.updated++
+      }
+    }
+    if (result.added || result.updated) this._saveData(this._data)
+    return result
   }
 
   addCode(code) {
