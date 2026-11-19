@@ -2,6 +2,7 @@ import { LitElement, html, css } from 'lit'
 import { authService } from 'fzl-fund-appshell--lit'
 import { researchStorage, getPersistenceProviderLabel } from '../services/storage-service.js'
 import { userData } from '../services/user-data-service.js'
+import { takeReadingRequest } from '../services/reading-intent.js'
 import { CaqdasDocxCodingController, CaqdasPersonalCloudDocsController } from '../controllers/caqdas-controllers.js'
 import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
@@ -82,6 +83,17 @@ export class CaqdasCodingView extends LitElement {
       display: flex;
       align-items: center;
       gap: 6px;
+    }
+
+    .save-excerpt .popover-code {
+      height: 26px;
+      max-width: 160px;
+      border-radius: 6px;
+      border: 1px solid var(--md-sys-color-outline, #9e9e9e);
+      font: inherit;
+      font-size: 0.8rem;
+      background: var(--md-sys-color-surface, #fff);
+      color: var(--md-sys-color-on-surface, #1c1b1f);
     }
 
     .save-excerpt input {
@@ -378,6 +390,22 @@ export class CaqdasCodingView extends LitElement {
     this._unsubscribeUserData = userData.subscribe(() => {
       this.readerPrefs = this._loadReaderPrefs()
     })
+    this._onReadingRequest = () => this._applyReadingRequest()
+    window.addEventListener('caqdas-reading-request', this._onReadingRequest)
+    this._applyReadingRequest()
+  }
+
+  /** "Continuar Leitura" nas Fontes: abre o documento pedido, já em tela cheia. */
+  async _applyReadingRequest() {
+    const request = takeReadingRequest()
+    if (!request || !this.documents.some((d) => d.id === request.docId)) return
+    if (request.docId !== this.selectedDocId) this._selectDoc(request.docId)
+    if (!request.fullscreen) return
+    await this.updateComplete
+    const reader = this.shadowRoot?.querySelector('fzl-document-reader')
+    await reader?.updateComplete
+    // Nativo quando o navegador ainda considera o clique recente; senão, modo imersivo.
+    await reader?.enterFullscreen?.()
   }
 
   disconnectedCallback() {
@@ -386,6 +414,7 @@ export class CaqdasCodingView extends LitElement {
     this._unsubscribeUserData?.()
     window.removeEventListener('caqdas-data-changed', this._onDataChanged)
     window.removeEventListener('caqdas-cloud-sync-changed', this._onCloudChanged)
+    window.removeEventListener('caqdas-reading-request', this._onReadingRequest)
   }
 
   firstUpdated() {
@@ -411,9 +440,8 @@ export class CaqdasCodingView extends LitElement {
     if (!this.selectedDocId && this.documents.length > 0) {
       this.selectedDocId = this.documents[0].id
     }
-    if (!this.selectedCodeId && this.codes.length > 0) {
-      this.selectedCodeId = this.codes[0].id
-    }
+    // Código é opcional: o trecho nasce só com título; um código removido deixa de valer.
+    if (this.selectedCodeId && !this.codes.some((c) => c.id === this.selectedCodeId)) this.selectedCodeId = ''
     this._syncReaderDoc()
   }
 
@@ -774,6 +802,22 @@ export class CaqdasCodingView extends LitElement {
                           if (e.key === 'Escape') this._clearSelection()
                         }}
                       />
+                      ${this.codes.length
+                        ? html`<select
+                            class="popover-code"
+                            aria-label="Código (opcional)"
+                            title="Código de Bardin (opcional)"
+                            .value=${this.selectedCodeId || ''}
+                            @change=${(e) => {
+                              this.selectedCodeId = e.target.value
+                            }}
+                          >
+                            <option value="" ?selected=${!this.selectedCodeId}>— sem código —</option>
+                            ${this.codes.map(
+                              (c) => html`<option value=${c.id} ?selected=${c.id === this.selectedCodeId}>${c.name}</option>`
+                            )}
+                          </select>`
+                        : ''}
                       <button type="submit" class="tool-btn primary" ?disabled=${!this.excerptTitle.trim()}>
                         <md-icon>bookmark_add</md-icon>Salvar
                       </button>

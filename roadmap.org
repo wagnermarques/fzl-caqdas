@@ -110,7 +110,7 @@ Ferramenta para converter gravações de campo em texto de análise.
 :END:
 O coração do software CAQDAS: recortar Unidades de Registro (UR) preservando a Unidade de Contexto (UC), aplicando codificação dedutiva (a priori) ou indutiva (a posteriori).
 
-- [ ] IN_PROGRESS Tarefa 4.0: Leitor de documentos e trechos selecionados (prioridade crítica) [5/6]
+- [ ] IN_PROGRESS Tarefa 4.0: Leitor de documentos e trechos selecionados (prioridade crítica) [6/11]
   Feito em conjunto com o fzl-fund-ui (componente genérico) e o caqdas (persistência).
   - [X] 4.0.1 (fzl-fund-ui) Leitor genérico, fase 1: tela cheia (Fullscreen API + fallback imersivo) e barras compactas (A-/A+, largura de leitura).
   - [X] 4.0.2 (fzl-fund-ui) Leitor, fase 2: evento de seleção com offsets + prefix/suffix (W3C Web Annotation), grifos persistíveis (~annotations~), ~anchorSelection()~.
@@ -122,6 +122,15 @@ O coração do software CAQDAS: recortar Unidades de Registro (UR) preservando a
     - Token fine-grained (Contents: read/write só nesse repositório), guardado no escopo do usuário no navegador.
     - Sincronizar = baixar → mesclar (o mais recente vence; marcas de exclusão ~deleted~ propagam) → enviar; arquivo sem mudança não gera commit.
     - Ideia futura: mover o cliente da Contents API para um ~FzlGitHubRemoteAdapter~ no fzl-fund-ui, se outros apps precisarem.
+  - [X] 4.0.7 (caqdas) "Continuar Leitura" (Fontes) abre o documento no leitor de trechos já em tela cheia; seleção e código opcional no balão.
+  - [ ] 4.0.8 (fzl-fund-ui → caqdas) PDF: extrair o texto (pdfjs-dist sob demanda) em blocos com página; o trecho registra ~page~. PDF escaneado → ~needsOcr~.
+  - [ ] 4.0.9 (fzl-fund-ui) Seleção ajustada a palavras inteiras (~snap-to-words~).
+  - [ ] 4.0.10 (fzl-fund-ui → caqdas) Painel lateral no leitor em tela cheia (slot ~aside~) com a lista de trechos do documento.
+  - [ ] 4.0.11 (caqdas) Outras mídias no mesmo fluxo: áudio/vídeo via transcrição (texto selecionável, com tempo); imagens via OCR (depois).
+- [ ] TODO Tarefa 4.2: Códigos (Bardin) a partir dos trechos e grafo de relações
+  - [ ] Promover títulos de trechos a códigos (agrupar títulos parecidos; um trecho pode ter vários códigos).
+  - [ ] Relações entre códigos/trechos (~relations: [{from, to, type, note}]~), salvas no JSON do GitHub (~relacoes.json~).
+  - [ ] Visualização em grafo (nós = códigos/trechos, arestas = relações), editável.
 - [ ] TODO Tarefa 4.1: Leitor e Codificador de Textos (~<caqdas-text-coder>~)
   - Reutilização e expansão de ~<fzl-lit-reader-content>~ e ~<fzl-lit-reader-mark-bar>~.
   - Seleção de trechos (excertos/quotations) com menu contextual flutuante para vincular códigos existentes ou criar novos.

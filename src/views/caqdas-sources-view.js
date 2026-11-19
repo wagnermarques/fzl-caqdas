@@ -1,3 +1,4 @@
+import { openForReading } from '../services/reading-intent.js'
 import { LitElement, html, css } from 'lit'
 import { researchStorage, getPersistenceProviderLabel } from '../services/storage-service.js'
 import { authService } from 'fzl-fund-appshell--lit'
@@ -980,6 +981,8 @@ export class CaqdasSourcesView extends LitElement {
       if (!researchStorage.hasLocalDocument(doc) && doc.googleDriveFileId) {
         void this._ensureLocalCopy(doc)
       }
+      // "Continuar Leitura" abre o leitor de trechos em tela cheia (no mesmo gesto do clique).
+      openForReading(doc.id)
     }
   }
 
@@ -1161,8 +1164,9 @@ export class CaqdasSourcesView extends LitElement {
                 @fzl-file-upload-success=${this._handleFileUploaded}
                 @fzl-file-uploaded=${this._handleFileUploaded}
                 @fzl-file-upload-error=${this._handleFileUploadError}
-                @fzl-file-open-study=${() => {
-                  window.location.hash = '#/codificacao'
+                @fzl-file-open-study=${(e) => {
+                  if (e.detail?.file?.id) openForReading(e.detail.file.id)
+                  else window.location.hash = '#/codificacao'
                 }}
               ></fzl-file-manager>
 
