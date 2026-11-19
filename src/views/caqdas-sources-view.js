@@ -1,4 +1,5 @@
 import { openForReading } from '../services/reading-intent.js'
+import { pdfTextExtractor } from '../services/pdf-text.js'
 import { LitElement, html, css } from 'lit'
 import { researchStorage, getPersistenceProviderLabel } from '../services/storage-service.js'
 import { authService } from 'fzl-fund-appshell--lit'
@@ -588,7 +589,16 @@ export class CaqdasSourcesView extends LitElement {
             status: isUploadedRemote ? 'synced' : 'local',
             externalViewerUrl: isUploadedRemote ? remoteUrl : undefined,
             googleDriveFileId: undefined,
-            syncedAt: isUploadedRemote ? Date.now() : undefined
+            syncedAt: isUploadedRemote ? Date.now() : undefined,
+            // Reimportação de PDF/DOCX: o texto extraído substitui o anterior (os trechos são reancorados).
+            ...(d.textContent || d.docxBlocks?.length
+              ? {
+                  content: d.textContent || d.docxBlocks.map((b) => b.text).join('\n\n'),
+                  docxBlocks: d.docxBlocks || undefined,
+                  ...(d.pageCount ? { pageCount: d.pageCount } : {}),
+                  ...(existing.type === 'pdf' ? { pdfNeedsOcr: Boolean(d.pdfNeedsOcr) } : {})
+                }
+              : {})
           })
           addedCount++
         }
@@ -619,6 +629,9 @@ export class CaqdasSourcesView extends LitElement {
         tags: d.tags && d.tags.length > 0 ? d.tags : ['importado', docType],
         content: d.textContent || (d.docxBlocks ? d.docxBlocks.map((b) => b.text).join('\n\n') : ''),
         docxBlocks: d.docxBlocks || undefined,
+        ...(docType === 'pdf'
+          ? { pageCount: d.pageCount || undefined, pdfNeedsOcr: Boolean(d.pdfNeedsOcr), textExtractedAt: d.textContent ? new Date().toISOString() : undefined }
+          : {}),
         quotations: []
       })
       if (d.file) {
@@ -1242,6 +1255,7 @@ export class CaqdasSourcesView extends LitElement {
               </div>
 
               <fzl-document-picker
+                .pdfTextExtractor=${pdfTextExtractor}
                 mode="all"
                 accept=".docx,.txt,.md,.pdf,.csv,.json"
                 allow-folder-scan

@@ -110,7 +110,7 @@ Ferramenta para converter gravações de campo em texto de análise.
 :END:
 O coração do software CAQDAS: recortar Unidades de Registro (UR) preservando a Unidade de Contexto (UC), aplicando codificação dedutiva (a priori) ou indutiva (a posteriori).
 
-- [ ] IN_PROGRESS Tarefa 4.0: Leitor de documentos e trechos selecionados (prioridade crítica) [8/11]
+- [ ] IN_PROGRESS Tarefa 4.0: Leitor de documentos e trechos selecionados (prioridade crítica) [9/11]
   Feito em conjunto com o fzl-fund-ui (componente genérico) e o caqdas (persistência).
   - [X] 4.0.1 (fzl-fund-ui) Leitor genérico, fase 1: tela cheia (Fullscreen API + fallback imersivo) e barras compactas (A-/A+, largura de leitura).
   - [X] 4.0.2 (fzl-fund-ui) Leitor, fase 2: evento de seleção com offsets + prefix/suffix (W3C Web Annotation), grifos persistíveis (~annotations~), ~anchorSelection()~.
@@ -123,7 +123,7 @@ O coração do software CAQDAS: recortar Unidades de Registro (UR) preservando a
     - Sincronizar = baixar → mesclar (o mais recente vence; marcas de exclusão ~deleted~ propagam) → enviar; arquivo sem mudança não gera commit.
     - Ideia futura: mover o cliente da Contents API para um ~FzlGitHubRemoteAdapter~ no fzl-fund-ui, se outros apps precisarem.
   - [X] 4.0.7 (caqdas) "Continuar Leitura" (Fontes) abre o documento no leitor de trechos já em tela cheia; seleção e código opcional no balão.
-  - [ ] 4.0.8 (fzl-fund-ui → caqdas) PDF: extrair o texto (pdfjs-dist sob demanda) em blocos com página; o trecho registra ~page~/~endPage~ (feito). PDF escaneado → ~needsOcr~. Falta instalar ~pdfjs-dist~ (decisão do usuário) e ligar ~extractPdfBlocks~.
+  - [X] 4.0.8 (fzl-fund-ui → caqdas) PDF: extrair o texto (pdfjs-dist sob demanda) em blocos com página; o trecho registra ~page~/~endPage~ (feito). PDF escaneado → ~needsOcr~. ~pdfjs-dist~ instalado no caqdas (autorizado pelo usuário em 2026-11-19), carregado sob demanda; PDFs antigos são extraídos ao abrir.
   - [X] 4.0.9 (fzl-fund-ui) Seleção ajustada a palavras inteiras (~snap-to-words~).
   - [X] 4.0.10 (fzl-fund-ui → caqdas) Painel lateral no leitor em tela cheia (slot ~aside~) com a lista de trechos do documento.
   - [ ] 4.0.11 (caqdas) Outras mídias no mesmo fluxo: áudio/vídeo via transcrição (texto selecionável, com tempo); imagens via OCR (depois).

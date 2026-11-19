@@ -3,6 +3,7 @@ import { authService } from 'fzl-fund-appshell--lit'
 import { researchStorage, getPersistenceProviderLabel } from '../services/storage-service.js'
 import { userData } from '../services/user-data-service.js'
 import { takeReadingRequest } from '../services/reading-intent.js'
+import { extractPdfText, pdfDocumentFields } from '../services/pdf-text.js'
 import { CaqdasDocxCodingController, CaqdasPersonalCloudDocsController } from '../controllers/caqdas-controllers.js'
 import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
@@ -83,6 +84,14 @@ export class CaqdasCodingView extends LitElement {
       display: flex;
       align-items: center;
       gap: 6px;
+    }
+
+    .pdf-status {
+      padding: 24px;
+      color: #475569;
+      line-height: 1.5;
+      max-width: 560px;
+      margin: 0 auto;
     }
 
     .aside-list {
@@ -357,7 +366,8 @@ export class CaqdasCodingView extends LitElement {
     excerptTitle: { state: true },
     editingExcerptId: { state: true },
     activeExcerptId: { state: true },
-    readerPrefs: { state: true }
+    readerPrefs: { state: true },
+    pdfStatus: { state: true }
   }
 
   constructor() {
@@ -376,6 +386,7 @@ export class CaqdasCodingView extends LitElement {
     this.editingExcerptId = ''
     this.activeExcerptId = ''
     this.readerPrefs = this._loadReaderPrefs()
+    this.pdfStatus = null
     this.readerController = new CaqdasDocxCodingController(this, { fontSize: 16 })
     this.cloudController = new CaqdasPersonalCloudDocsController(this)
   }
@@ -458,8 +469,59 @@ export class CaqdasCodingView extends LitElement {
     this._syncReaderDoc()
   }
 
+  /** PDF sem texto ainda (importado antes da extração): extrai do arquivo salvo no navegador. */
+  async _ensurePdfText(doc) {
+    const isPdf = doc?.type === 'pdf' || /\.pdf$/i.test(doc?.extension || doc?.title || '')
+    if (!isPdf || doc.textExtractedAt || String(doc.content || '').trim()) {
+      if (this.pdfStatus?.docId === doc?.id && this.pdfStatus.state !== 'extracting') this.pdfStatus = null
+      return
+    }
+    if (this.pdfStatus?.docId === doc.id && this.pdfStatus.state === 'extracting') return
+    const file = researchStorage.getBinaryFile(doc.id)
+    if (!file) {
+      this.pdfStatus = { docId: doc.id, state: 'no-file' }
+      return
+    }
+    this.pdfStatus = { docId: doc.id, state: 'extracting', page: 0, total: 0 }
+    try {
+      const result = await extractPdfText(file, {
+        onProgress: (page, total) => {
+          if (this.pdfStatus?.docId === doc.id) this.pdfStatus = { ...this.pdfStatus, page, total }
+        }
+      })
+      researchStorage.updateDocument(doc.id, pdfDocumentFields(result))
+      this.pdfStatus = null
+    } catch (err) {
+      console.warn('[FZL CAQDAS] Falha ao extrair texto do PDF:', err)
+      const locked = /password/i.test(String(err?.name || err?.message || ''))
+      this.pdfStatus = {
+        docId: doc.id,
+        state: 'error',
+        message: locked ? 'O PDF está protegido por senha.' : err?.message || 'erro desconhecido'
+      }
+    }
+  }
+
+  _renderPdfStatus(doc) {
+    const st = this.pdfStatus?.docId === doc?.id ? this.pdfStatus : null
+    if (doc?.pdfNeedsOcr && !String(doc.content || '').trim()) {
+      return html`<div slot="empty" class="pdf-status">
+        📄 Este PDF é digitalizado (imagem): não tem texto para selecionar. O reconhecimento de texto (OCR) ainda não está disponível.
+      </div>`
+    }
+    if (!st) return ''
+    const text =
+      st.state === 'extracting'
+        ? `⏳ Extraindo o texto do PDF${st.total ? ` (página ${st.page} de ${st.total})` : ''}…`
+        : st.state === 'no-file'
+          ? '📄 O arquivo deste PDF não está neste dispositivo. Abra-o em Fontes (“Continuar Leitura”) para baixá-lo da nuvem, ou reimporte o arquivo.'
+          : `⚠️ Não foi possível ler o texto do PDF: ${st.message}`
+    return html`<div slot="empty" class="pdf-status">${text}</div>`
+  }
+
   _syncReaderDoc() {
     const doc = this.documents.find((d) => d.id === this.selectedDocId)
+    if (doc) void this._ensurePdfText(doc)
     if (doc) {
       this.readerController.openDocument({
         id: doc.id,
@@ -863,6 +925,7 @@ export class CaqdasCodingView extends LitElement {
               @fzl-reader-annotation-click=${this._handleAnnotationClick}
               @fzl-reader-preferences-change=${this._handleReaderPrefs}
             >
+              ${this._renderPdfStatus(doc)}
               <div slot="aside" class="aside-list">
                 <h3 class="aside-title">Trechos (${excerpts.length})</h3>
                 ${this._renderExcerptList(excerpts, codeMap, orphanIds, posById)}

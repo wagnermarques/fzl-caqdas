@@ -20,7 +20,8 @@
     "@material-symbols/font-400": "^0.35.0",
     "@material/web": "^2.5.0",
     "dompurify": "^3.4.17",
-    "lit": "^3.3.3"
+    "lit": "^3.3.3",
+    "pdfjs-dist": "^5.7.284"
   },
   "devDependencies": {
     "sharp": "^0.35.4",
