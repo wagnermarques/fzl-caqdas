@@ -9,6 +9,7 @@ import '@material/web/icon/icon.js'
 import '@material/web/select/outlined-select.js'
 import '@material/web/select/select-option.js'
 import '@fzl/webcomponents-lit/reader-chapterview'
+import '../components/caqdas-github-sync-panel.js'
 import {
   anchorSelection,
   buildTextQuote,
@@ -605,6 +606,7 @@ export class CaqdasCodingView extends LitElement {
       const result = researchStorage.importExcerpts(JSON.parse(await file.text()))
       alert(
         `Importação concluída: ${result.added} novo(s), ${result.updated} atualizado(s)` +
+          (result.removed ? `, ${result.removed} removido(s)` : '') +
           (result.skipped ? `, ${result.skipped} ignorado(s) (documento não encontrado neste corpus).` : '.')
       )
     } catch (err) {
@@ -849,6 +851,7 @@ export class CaqdasCodingView extends LitElement {
               <input type="file" accept="application/json,.json" hidden @change=${this._importExcerpts} />
             </label>
           </div>
+          <caqdas-github-sync-panel compact style="margin: 4px 0 10px;"></caqdas-github-sync-panel>
 
           ${excerpts.length === 0 ? html`
             <div style="color: #777; font-size: 0.9rem;">

@@ -9,6 +9,7 @@ import '@material/web/icon/icon.js'
 import '@material/web/textfield/outlined-text-field.js'
 import '@fzl/webcomponents-lit/social-login'
 import '@fzl/webcomponents-lit/reader-chapterview'
+import '../components/caqdas-github-sync-panel.js'
 
 export class CaqdasPersistenceConfigView extends LitElement {
   static styles = css`
@@ -919,6 +920,11 @@ export class CaqdasPersistenceConfigView extends LitElement {
           </div>
         </div>
       </details>
+
+      <!-- Trechos e projeto no GitHub (repositório privado do usuário) -->
+      <div class="section-card">
+        <caqdas-github-sync-panel></caqdas-github-sync-panel>
+      </div>
 
       <!-- Estado de Sincronização do Corpus -->
       <div class="section-card">

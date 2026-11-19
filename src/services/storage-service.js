@@ -716,7 +716,23 @@ class ResearchStorageService {
     const doc = this._data.documents.find(d => d.id === docId)
     if (!doc || !doc.quotations) return
     doc.quotations = doc.quotations.filter(q => q.id !== quoteId)
+    // Marca de exclusão: impede que uma sincronização traga o trecho de volta.
+    this._rememberDeletedExcerpt({ id: quoteId, docId, deletedAt: new Date().toISOString() })
     this._saveData(this._data)
+  }
+
+  /** Trechos removidos (id, docId, deletedAt), para propagar a exclusão entre aparelhos. */
+  getDeletedExcerpts() {
+    return Array.isArray(this._data.deletedExcerpts) ? this._data.deletedExcerpts : []
+  }
+
+  _rememberDeletedExcerpt(mark) {
+    if (!mark?.id || typeof mark.deletedAt !== 'string') return
+    const list = this.getDeletedExcerpts().filter((m) => m.id !== mark.id)
+    const previous = this.getDeletedExcerpts().find((m) => m.id === mark.id)
+    const keep = previous && previous.deletedAt > mark.deletedAt ? previous : mark
+    list.push({ id: String(keep.id), docId: String(keep.docId || ''), deletedAt: keep.deletedAt })
+    this._data.deletedExcerpts = list
   }
 
   /** Trechos de um documento, já no formato atual (ordem de leitura). */
@@ -767,14 +783,16 @@ class ResearchStorageService {
       codes: this.getCodes()
         .filter((c) => usedCodes.has(c.id))
         .map((c) => ({ id: c.id, name: c.name, color: c.color, categoryId: c.categoryId || null })),
-      excerpts
+      excerpts,
+      deleted: this.getDeletedExcerpts()
     }
   }
 
   /**
    * Importa trechos de um JSON exportado (mescla por id; o mais recente vence).
    * Trechos de documentos que não existem neste corpus são ignorados (procura por id e, depois, por título).
-   * @returns {{ added: number, updated: number, skipped: number }}
+   * Marcas de exclusão (`deleted`) removem trechos locais que não foram editados depois da exclusão.
+   * @returns {{ added: number, updated: number, removed: number, skipped: number }}
    */
   importExcerpts(payload) {
     if (!payload || payload.schema !== EXCERPT_SCHEMA || !Array.isArray(payload.excerpts)) {
@@ -782,8 +800,22 @@ class ResearchStorageService {
     }
     const docs = this.getDocuments()
     const sourceTitles = new Map((payload.documents || []).map((d) => [d.id, d.title]))
-    const result = { added: 0, updated: 0, skipped: 0 }
+    const result = { added: 0, updated: 0, removed: 0, skipped: 0 }
+    let tombstonesChanged = false
+    const tombstoneOf = (id) => this.getDeletedExcerpts().find((m) => m.id === id)
+    for (const mark of Array.isArray(payload.deleted) ? payload.deleted : []) {
+      if (!mark?.id || typeof mark.deletedAt !== 'string') continue
+      const before = tombstoneOf(mark.id)?.deletedAt
+      this._rememberDeletedExcerpt(mark)
+      if (tombstoneOf(mark.id)?.deletedAt !== before) tombstonesChanged = true
+    }
     for (const raw of payload.excerpts) {
+      // Removido aqui (ou em outro aparelho) depois da última edição: não volta.
+      const mark = raw?.id ? tombstoneOf(raw.id) : null
+      if (mark && mark.deletedAt >= String(raw.updatedAt || raw.createdAt || '')) {
+        result.skipped++
+        continue
+      }
       const title = sourceTitles.get(raw?.docId) || raw?.docTitle
       const doc = docs.find((d) => d.id === raw?.docId) || (title ? docs.find((d) => d.title === title) : null)
       if (!doc || !raw?.id || !raw?.text) {
@@ -801,7 +833,17 @@ class ResearchStorageService {
         result.updated++
       }
     }
-    if (result.added || result.updated) this._saveData(this._data)
+    // Aplica as exclusões aos trechos locais que não mudaram depois delas.
+    for (const doc of docs) {
+      if (!doc.quotations?.length) continue
+      const kept = doc.quotations.filter((q) => {
+        const mark = tombstoneOf(q.id)
+        return !mark || mark.deletedAt < normalizeExcerpt(q, doc).updatedAt
+      })
+      result.removed += doc.quotations.length - kept.length
+      doc.quotations = kept
+    }
+    if (result.added || result.updated || result.removed || tombstonesChanged) this._saveData(this._data)
     return result
   }
 
