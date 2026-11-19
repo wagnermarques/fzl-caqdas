@@ -59,6 +59,7 @@ const toInt = (value) => (Number.isInteger(value) && value >= 0 ? value : null)
  * - start / end: posição em caracteres no texto do documento (TextPositionSelector);
  * - prefix / suffix: contexto antes/depois, para reencontrar o trecho se o texto mudar (TextQuoteSelector);
  * - blockIndex: parágrafo/bloco de origem, quando o leitor informar;
+ * - page / endPage: página de início/fim (PDF), quando houver;
  * - codeId: código aplicado (opcional); note: anotação livre;
  * - createdAt / updatedAt: ISO 8601.
  */
@@ -83,6 +84,8 @@ export function normalizeExcerpt(raw, doc = null) {
     prefix: String(q.prefix || ''),
     suffix: String(q.suffix || ''),
     blockIndex: toInt(q.blockIndex),
+    page: toInt(q.page) || null,
+    endPage: toInt(q.endPage) || null,
     codeId: q.codeId ? String(q.codeId) : null,
     note: String(q.note || ''),
     createdAt,

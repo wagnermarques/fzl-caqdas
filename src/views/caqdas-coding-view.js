@@ -85,6 +85,19 @@ export class CaqdasCodingView extends LitElement {
       gap: 6px;
     }
 
+    .aside-list {
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .aside-title {
+      margin: 0;
+      font-size: 0.95rem;
+      color: var(--md-sys-color-primary, #006a6a);
+    }
+
     .save-excerpt .popover-code {
       height: 26px;
       max-width: 160px;
@@ -505,9 +518,9 @@ export class CaqdasCodingView extends LitElement {
 
   /** Seleção feita no leitor (fzl-reader-selection): âncora W3C + trecho pendente visível. */
   _handleReaderSelection(e) {
-    const { text, start, end, prefix, suffix, blockIndex } = e.detail || {}
+    const { text, start, end, prefix, suffix, blockIndex, page, endPage } = e.detail || {}
     if (!text) return
-    this.selectionAnchor = { text, start, end, prefix, suffix, blockIndex: blockIndex ?? null }
+    this.selectionAnchor = { text, start, end, prefix, suffix, blockIndex: blockIndex ?? null, page: page ?? null, endPage: endPage ?? null }
     this.selectedText = text
     this.selectedUrId = ''
     if (this._reader) this._reader.pendingRange = { start, end }
@@ -605,7 +618,7 @@ export class CaqdasCodingView extends LitElement {
     if (!id) return
     this.activeExcerptId = id
     this.updateComplete.then(() =>
-      this.shadowRoot?.querySelector(`[data-excerpt-id="${CSS.escape(id)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
+      this._excerptElement(id)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     )
   }
 
@@ -640,6 +653,74 @@ export class CaqdasCodingView extends LitElement {
     } catch (err) {
       alert(err?.message || 'Não foi possível ler o arquivo JSON.')
     }
+  }
+
+  /** Lista de trechos (usada na lateral da página e no painel do leitor em tela cheia). */
+  _renderExcerptList(excerpts, codeMap, orphanIds, posById) {
+    return excerpts.length === 0 ? html`
+            <div style="color: #777; font-size: 0.9rem;">
+              Nenhum trecho salvo neste documento ainda.
+            </div>
+          ` : excerpts.map(q => {
+            const code = q.codeId ? codeMap.get(q.codeId) || { name: 'Código removido', color: '#999' } : null
+            return html`
+              <div
+                class="quote-list-item ${this.activeExcerptId === q.id ? 'active' : ''}"
+                data-excerpt-id=${q.id}
+              >
+                <div class="excerpt-title">
+                  ${this.editingExcerptId === q.id
+                    ? html`
+                        <input
+                          type="text"
+                          aria-label="Título do trecho"
+                          .value=${q.title}
+                          @keydown=${(e) => {
+                            if (e.key === 'Enter') this._handleSaveTitle(q.id, e.target.value)
+                            if (e.key === 'Escape') this.editingExcerptId = ''
+                          }}
+                          @blur=${(e) => this._handleSaveTitle(q.id, e.target.value)}
+                        />
+                      `
+                    : q.title || html`<span style="color: #999; font-weight: 400;">(sem título)</span>`}
+                </div>
+                <span class="quote-text">“${q.text}”</span>
+                <div class="excerpt-meta">
+                  ${orphanIds.has(q.id)
+                    ? html`<strong style="color: #b45309;">não encontrado no texto atual</strong> · `
+                    : html`${q.page ? `p. ${q.page}${q.endPage && q.endPage !== q.page ? `–${q.endPage}` : ''} · ` : ''}posição ${posById.get(q.id).start}–${posById.get(q.id).end} · `}${new Date(q.createdAt).getTime() > 0
+                    ? new Date(q.createdAt).toLocaleString('pt-BR')
+                    : ''}
+                </div>
+                <div class="quote-footer">
+                  ${code
+                    ? html`<span class="code-chip" style="background-color: ${code.color};">${code.name}</span>`
+                    : html`<span></span>`}
+                  <span>
+                    <button class="link-btn" @click=${() => this._goToExcerpt(q)}>Ir para</button>
+                    <button
+                      class="link-btn"
+                      @click=${async () => {
+                        this.editingExcerptId = q.id
+                        await this.updateComplete
+                        this._excerptElement(q.id, '.excerpt-title input')?.focus()
+                      }}
+                    >
+                      Renomear
+                    </button>
+                    <button class="remove-btn" @click=${() => this._handleDeleteQuote(q)}>Remover</button>
+                  </span>
+                </div>
+              </div>
+            `
+          })
+  }
+
+  /** Item da lista que está à vista: o do painel do leitor em tela cheia, ou o da lateral. */
+  _excerptElement(id, inner = '') {
+    const scope = this._reader?.fullscreen ? '.aside-list' : '.sidebar-card'
+    const sel = `${scope} [data-excerpt-id="${CSS.escape(id)}"] ${inner}`.trim()
+    return this.shadowRoot?.querySelector(sel) || null
   }
 
   render() {
@@ -768,6 +849,7 @@ export class CaqdasCodingView extends LitElement {
             <fzl-document-reader
               compact
               popover-autofocus
+              snap-to-words
               document-title=${doc?.title || ''}
               meta=${doc?.participant || ''}
               .text=${blocks ? '' : doc?.content || ''}
@@ -781,6 +863,10 @@ export class CaqdasCodingView extends LitElement {
               @fzl-reader-annotation-click=${this._handleAnnotationClick}
               @fzl-reader-preferences-change=${this._handleReaderPrefs}
             >
+              <div slot="aside" class="aside-list">
+                <h3 class="aside-title">Trechos (${excerpts.length})</h3>
+                ${this._renderExcerptList(excerpts, codeMap, orphanIds, posById)}
+              </div>
               ${html`
                     <form
                       slot="selection-popover"
@@ -897,63 +983,7 @@ export class CaqdasCodingView extends LitElement {
           </div>
           <caqdas-github-sync-panel compact style="margin: 4px 0 10px;"></caqdas-github-sync-panel>
 
-          ${excerpts.length === 0 ? html`
-            <div style="color: #777; font-size: 0.9rem;">
-              Nenhum trecho salvo neste documento ainda.
-            </div>
-          ` : excerpts.map(q => {
-            const code = q.codeId ? codeMap.get(q.codeId) || { name: 'Código removido', color: '#999' } : null
-            return html`
-              <div
-                class="quote-list-item ${this.activeExcerptId === q.id ? 'active' : ''}"
-                data-excerpt-id=${q.id}
-              >
-                <div class="excerpt-title">
-                  ${this.editingExcerptId === q.id
-                    ? html`
-                        <input
-                          type="text"
-                          aria-label="Título do trecho"
-                          .value=${q.title}
-                          @keydown=${(e) => {
-                            if (e.key === 'Enter') this._handleSaveTitle(q.id, e.target.value)
-                            if (e.key === 'Escape') this.editingExcerptId = ''
-                          }}
-                          @blur=${(e) => this._handleSaveTitle(q.id, e.target.value)}
-                        />
-                      `
-                    : q.title || html`<span style="color: #999; font-weight: 400;">(sem título)</span>`}
-                </div>
-                <span class="quote-text">“${q.text}”</span>
-                <div class="excerpt-meta">
-                  ${orphanIds.has(q.id)
-                    ? html`<strong style="color: #b45309;">não encontrado no texto atual</strong> · `
-                    : html`posição ${posById.get(q.id).start}–${posById.get(q.id).end} · `}${new Date(q.createdAt).getTime() > 0
-                    ? new Date(q.createdAt).toLocaleString('pt-BR')
-                    : ''}
-                </div>
-                <div class="quote-footer">
-                  ${code
-                    ? html`<span class="code-chip" style="background-color: ${code.color};">${code.name}</span>`
-                    : html`<span></span>`}
-                  <span>
-                    <button class="link-btn" @click=${() => this._goToExcerpt(q)}>Ir para</button>
-                    <button
-                      class="link-btn"
-                      @click=${async () => {
-                        this.editingExcerptId = q.id
-                        await this.updateComplete
-                        this.shadowRoot?.querySelector('.excerpt-title input')?.focus()
-                      }}
-                    >
-                      Renomear
-                    </button>
-                    <button class="remove-btn" @click=${() => this._handleDeleteQuote(q)}>Remover</button>
-                  </span>
-                </div>
-              </div>
-            `
-          })}
+          ${this._renderExcerptList(excerpts, codeMap, orphanIds, posById)}
         </div>
       </div>
     `
