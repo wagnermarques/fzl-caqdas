@@ -910,8 +910,6 @@ export class CaqdasCodingView extends LitElement {
           <div class="reader-frame">
             <fzl-document-reader
               compact
-              popover-autofocus
-              snap-to-words
               document-title=${doc?.title || ''}
               meta=${doc?.participant || ''}
               .text=${blocks ? '' : doc?.content || ''}
