@@ -6,7 +6,7 @@ import { extractPdfBlocks } from '@fzl/webcomponents-lit/document-reader'
 
 let pdfjsPromise = null
 
-function loadPdfjs() {
+export function loadPdfjs() {
   pdfjsPromise ??= Promise.all([
     import('pdfjs-dist'),
     import('pdfjs-dist/build/pdf.worker.min.mjs?url')

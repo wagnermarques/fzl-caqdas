@@ -3,7 +3,7 @@ import { authService } from 'fzl-fund-appshell--lit'
 import { researchStorage, getPersistenceProviderLabel } from '../services/storage-service.js'
 import { userData } from '../services/user-data-service.js'
 import { takeReadingRequest } from '../services/reading-intent.js'
-import { extractPdfText, pdfDocumentFields } from '../services/pdf-text.js'
+import { extractPdfText, pdfDocumentFields, loadPdfjs } from '../services/pdf-text.js'
 import { CaqdasDocxCodingController, CaqdasPersonalCloudDocsController } from '../controllers/caqdas-controllers.js'
 import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
@@ -367,7 +367,9 @@ export class CaqdasCodingView extends LitElement {
     editingExcerptId: { state: true },
     activeExcerptId: { state: true },
     readerPrefs: { state: true },
-    pdfStatus: { state: true }
+    pdfStatus: { state: true },
+    pdfFile: { state: true },
+    pdfjs: { state: true }
   }
 
   constructor() {
@@ -387,6 +389,8 @@ export class CaqdasCodingView extends LitElement {
     this.activeExcerptId = ''
     this.readerPrefs = this._loadReaderPrefs()
     this.pdfStatus = null
+    this.pdfFile = null
+    this.pdfjs = null
     this.readerController = new CaqdasDocxCodingController(this, { fontSize: 16 })
     this.cloudController = new CaqdasPersonalCloudDocsController(this)
   }
@@ -519,19 +523,37 @@ export class CaqdasCodingView extends LitElement {
     return html`<div slot="empty" class="pdf-status">${text}</div>`
   }
 
-  _syncReaderDoc() {
+  async _syncReaderDoc() {
     const doc = this.documents.find((d) => d.id === this.selectedDocId)
-    if (doc) void this._ensurePdfText(doc)
-    if (doc) {
-      this.readerController.openDocument({
-        id: doc.id,
-        name: doc.title,
-        category: doc.type === 'docx' ? 'docx' : doc.type === 'pdf' ? 'pdf' : 'text',
-        extension: doc.extension || (doc.type === 'docx' ? '.docx' : '.txt'),
-        textContent: doc.content || '',
-        blocks: doc.docxBlocks || undefined
-      })
+    if (!doc) {
+      this.pdfFile = null
+      return
     }
+    const isPdf = doc.type === 'pdf' || /\.pdf$/i.test(doc.extension || doc.title || '')
+    if (isPdf) {
+      let file = researchStorage.getBinaryFile(doc.id)
+      if (!file) {
+        file = await researchStorage.getBinaryFileAsync(doc.id)
+      }
+      this.pdfFile = file || null
+      if (file && !this.pdfjs) {
+        void loadPdfjs().then((pdfjs) => {
+          this.pdfjs = pdfjs
+        })
+      }
+    } else {
+      this.pdfFile = null
+    }
+
+    void this._ensurePdfText(doc)
+    this.readerController.openDocument({
+      id: doc.id,
+      name: doc.title,
+      category: doc.type === 'docx' ? 'docx' : doc.type === 'pdf' ? 'pdf' : 'text',
+      extension: doc.extension || (doc.type === 'docx' ? '.docx' : '.txt'),
+      textContent: doc.content || '',
+      blocks: doc.docxBlocks || undefined
+    })
   }
 
   _selectDoc(id) {
@@ -580,13 +602,22 @@ export class CaqdasCodingView extends LitElement {
 
   /** Seleção feita no leitor (fzl-reader-selection): âncora W3C + trecho pendente visível. */
   _handleReaderSelection(e) {
-    const { text, start, end, prefix, suffix, blockIndex, page, endPage } = e.detail || {}
+    const { text, start, end, prefix, suffix, blockIndex, page, endPage, rects } = e.detail || {}
     if (!text) return
-    this.selectionAnchor = { text, start, end, prefix, suffix, blockIndex: blockIndex ?? null, page: page ?? null, endPage: endPage ?? null }
+    this.selectionAnchor = {
+      text,
+      start,
+      end,
+      prefix,
+      suffix,
+      blockIndex: blockIndex ?? null,
+      page: page ?? null,
+      endPage: endPage ?? null,
+      rects: rects ?? null
+    }
     this.selectedText = text
     this.selectedUrId = ''
     if (this._reader) this._reader.pendingRange = { start, end }
-    // O foco no campo de título é feito pelo leitor (popover-autofocus).
   }
 
   _handleReaderSelectionClear() {
@@ -672,7 +703,13 @@ export class CaqdasCodingView extends LitElement {
     this.activeExcerptId = quote.id
     await this.updateComplete
     const shown = await reader.scrollToAnnotation?.(quote.id)
-    if (!shown) alert('Este trecho não foi encontrado no texto atual do documento.')
+    if (!shown) {
+      if (typeof quote.page === 'number' && reader.viewMode === 'pdf') {
+        reader.scrollToPage?.(quote.page)
+      } else {
+        alert('Este trecho não foi encontrado no texto atual do documento.')
+      }
+    }
   }
 
   _handleAnnotationClick(e) {
@@ -817,8 +854,16 @@ export class CaqdasCodingView extends LitElement {
     const excerpts = doc ? researchStorage.getDocumentExcerpts(doc.id) : []
     const anchored = this._anchoredExcerpts(doc, excerpts, codeMap)
     const annotations = anchored
-      .filter((a) => a.pos)
-      .map((a) => ({ id: a.q.id, start: a.pos.start, end: a.pos.end, color: a.color, title: a.q.title }))
+      .filter((a) => a.pos || (Array.isArray(a.q.rects) && a.q.rects.length > 0))
+      .map((a) => ({
+        id: a.q.id,
+        start: a.pos?.start ?? 0,
+        end: a.pos?.end ?? 0,
+        color: a.color,
+        title: a.q.title,
+        page: a.q.page ?? a.pos?.page,
+        rects: a.q.rects
+      }))
     const orphanIds = new Set(anchored.filter((a) => !a.pos).map((a) => a.q.id))
     const posById = new Map(anchored.map((a) => [a.q.id, a.pos]))
     const blocks = Array.isArray(doc?.docxBlocks) && doc.docxBlocks.length ? doc.docxBlocks : null
@@ -914,6 +959,8 @@ export class CaqdasCodingView extends LitElement {
               meta=${doc?.participant || ''}
               .text=${blocks ? '' : doc?.content || ''}
               .blocks=${blocks}
+              .pdfSource=${this.pdfFile}
+              .pdfjs=${this.pdfjs}
               .fontSize=${this.readerPrefs.fontSize}
               .readingWidth=${this.readerPrefs.readingWidth}
               .annotations=${annotations}
