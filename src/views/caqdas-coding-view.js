@@ -25,29 +25,64 @@ const DEFAULT_EXCERPT_COLOR = '#f9d65c'
 
 export class CaqdasCodingView extends LitElement {
   static styles = css`
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+    }
+
     :host {
       display: block;
+      box-sizing: border-box;
+      width: 100%;
       padding: 24px;
       max-width: 1200px;
       margin: 0 auto;
+      overflow-x: clip;
     }
 
     h1 {
       margin: 0 0 8px 0;
       color: var(--md-sys-color-primary, #006a6a);
       font-size: 1.6rem;
+      line-height: 1.25;
+      overflow-wrap: break-word;
+    }
+
+    .doc-controls {
+      margin-top: 16px;
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 10px 12px;
+      max-width: 100%;
+    }
+
+    .doc-select {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+      font-size: 0.95rem;
+      max-width: 100%;
+      min-width: 0;
+      flex: 0 1 auto;
+      text-overflow: ellipsis;
+    }
+
+    .doc-controls fzl-reader-chapterview {
+      max-width: 100%;
     }
 
     .layout {
       display: grid;
-      grid-template-columns: 2fr 1fr;
+      grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
       gap: 24px;
       margin-top: 20px;
     }
 
     @media (max-width: 840px) {
       .layout {
-        grid-template-columns: 1fr;
+        grid-template-columns: minmax(0, 1fr);
       }
     }
 
@@ -56,6 +91,8 @@ export class CaqdasCodingView extends LitElement {
       border: 1px solid var(--md-sys-color-outline-variant, #e0e0e0);
       border-radius: 12px;
       padding: 24px;
+      min-width: 0;
+      max-width: 100%;
     }
 
     .sidebar-card {
@@ -66,11 +103,16 @@ export class CaqdasCodingView extends LitElement {
       display: flex;
       flex-direction: column;
       gap: 16px;
+      min-width: 0;
+      max-width: 100%;
     }
 
     .reader-frame {
       height: min(78vh, 960px);
       min-height: 360px;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
       margin-top: 12px;
       border: 1px solid var(--md-sys-color-outline-variant, #e0e0e0);
       border-radius: 10px;
@@ -79,20 +121,26 @@ export class CaqdasCodingView extends LitElement {
 
     .reader-frame fzl-document-reader {
       --fzl-reader-height: 100%;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
     }
 
     .save-excerpt {
       display: flex;
       align-items: center;
+      flex-wrap: wrap;
       gap: 6px;
+      max-width: min(100%, calc(100vw - 32px));
     }
 
     .pdf-status {
       padding: 24px;
       color: #475569;
       line-height: 1.5;
-      max-width: 560px;
+      max-width: min(560px, 100%);
       margin: 0 auto;
+      overflow-wrap: break-word;
     }
 
     .aside-list {
@@ -110,7 +158,8 @@ export class CaqdasCodingView extends LitElement {
 
     .save-excerpt .popover-code {
       height: 26px;
-      max-width: 160px;
+      min-width: 0;
+      max-width: min(160px, 100%);
       border-radius: 6px;
       border: 1px solid var(--md-sys-color-outline, #9e9e9e);
       font: inherit;
@@ -121,7 +170,10 @@ export class CaqdasCodingView extends LitElement {
 
     .save-excerpt input {
       height: 26px;
+      flex: 1 1 120px;
+      min-width: 0;
       width: clamp(120px, 22vw, 260px);
+      max-width: 100%;
       padding: 0 8px;
       border-radius: 6px;
       border: 1px solid var(--md-sys-color-outline, #9e9e9e);
@@ -173,11 +225,14 @@ export class CaqdasCodingView extends LitElement {
       gap: 12px;
       flex-wrap: wrap;
       font-size: 0.9rem;
+      max-width: 100%;
+      min-width: 0;
     }
 
     .selection-bar .preview {
-      flex: 1 1 240px;
+      flex: 1 1 180px;
       min-width: 0;
+      max-width: 100%;
       font-style: italic;
       color: var(--md-sys-color-primary, #006a6a);
       overflow: hidden;
@@ -185,9 +240,29 @@ export class CaqdasCodingView extends LitElement {
       white-space: nowrap;
     }
 
+    .selection-code-label {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      max-width: 100%;
+      min-width: 0;
+    }
+
+    .selection-code-select {
+      padding: 6px 10px;
+      border-radius: 6px;
+      border: 1px solid #bbb;
+      max-width: 100%;
+      min-width: 0;
+      text-overflow: ellipsis;
+    }
+
     .excerpt-title {
       font-weight: 600;
       color: var(--md-sys-color-on-surface, #1c1b1f);
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .excerpt-title input {
@@ -200,6 +275,8 @@ export class CaqdasCodingView extends LitElement {
     .excerpt-meta {
       font-size: 0.75rem;
       color: var(--md-sys-color-on-surface-variant, #666);
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .link-btn {
@@ -238,6 +315,9 @@ export class CaqdasCodingView extends LitElement {
       flex-direction: column;
       gap: 6px;
       font-size: 0.9rem;
+      min-width: 0;
+      max-width: 100%;
+      overflow-wrap: anywhere;
     }
 
     .quote-list-item.active {
@@ -256,12 +336,16 @@ export class CaqdasCodingView extends LitElement {
     .quote-text {
       font-style: italic;
       color: var(--md-sys-color-on-surface, #1c1b1f);
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
 
     .quote-footer {
       display: flex;
       justify-content: space-between;
       align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
       margin-top: 4px;
     }
 
@@ -274,6 +358,8 @@ export class CaqdasCodingView extends LitElement {
       font-size: 0.75rem;
       font-weight: 500;
       color: white;
+      max-width: 100%;
+      overflow-wrap: anywhere;
     }
 
     .remove-btn {
@@ -294,6 +380,14 @@ export class CaqdasCodingView extends LitElement {
       background: #f4f8f8;
       border-radius: 8px;
       border: 1px solid #e0eeee;
+      min-width: 0;
+      max-width: 100%;
+    }
+
+    .ur-chips-container fzl-reader-chapterview-group {
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
     }
 
     .ur-chip {
@@ -350,6 +444,48 @@ export class CaqdasCodingView extends LitElement {
 
     .btn-local-badge:hover {
       background: #d1fae5;
+    }
+
+    @media (max-width: 640px) {
+      :host {
+        padding: 12px;
+      }
+
+      h1 {
+        font-size: 1.25rem;
+      }
+
+      .layout {
+        gap: 16px;
+        margin-top: 14px;
+      }
+
+      .editor-card {
+        padding: 12px;
+      }
+
+      .sidebar-card {
+        padding: 14px;
+      }
+
+      .doc-select {
+        width: 100%;
+        flex: 1 1 100%;
+      }
+
+      .reader-frame {
+        height: min(72vh, 720px);
+        min-height: 320px;
+      }
+
+      .selection-code-label {
+        width: 100%;
+      }
+
+      .selection-code-select {
+        flex: 1 1 140px;
+        width: 100%;
+      }
     }
   `
 
@@ -1077,10 +1213,10 @@ export class CaqdasCodingView extends LitElement {
         </p>
       </div>
 
-      <div style="margin-top: 16px; display: flex; align-items: center; flex-wrap: wrap; gap: 12px;">
+      <div class="doc-controls">
         <label style="font-weight: 500;">Documento:</label>
         <select
-          style="padding: 8px 12px; border-radius: 8px; border: 1px solid #ccc; font-size: 0.95rem;"
+          class="doc-select"
           .value=${this.selectedDocId}
           @change=${(e) => this._selectDoc(e.target.value)}
         >
@@ -1257,10 +1393,10 @@ export class CaqdasCodingView extends LitElement {
             <span class="preview">
               ${this.selectedText ? `“${this.selectedText}”` : 'Selecione um trecho no leitor com o mouse ou o teclado.'}
             </span>
-            <label style="display: flex; align-items: center; gap: 6px;">
+            <label class="selection-code-label">
               Código (opcional):
               <select
-                style="padding: 6px 10px; border-radius: 6px; border: 1px solid #bbb;"
+                class="selection-code-select"
                 .value=${this.selectedCodeId}
                 @change=${(e) => { this.selectedCodeId = e.target.value }}
               >

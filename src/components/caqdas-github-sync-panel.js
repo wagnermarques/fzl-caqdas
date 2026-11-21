@@ -46,6 +46,9 @@ export class CaqdasGithubSyncPanel extends LitElement {
   static styles = css`
     :host {
       display: block;
+      max-width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
       font-size: 0.88rem;
       color: var(--md-sys-color-on-surface, #1f2937);
     }
@@ -67,6 +70,8 @@ export class CaqdasGithubSyncPanel extends LitElement {
       padding: 1px 4px;
       border-radius: 4px;
       font-size: 0.82rem;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     .grid {
       display: grid;
@@ -138,6 +143,8 @@ export class CaqdasGithubSyncPanel extends LitElement {
       background: #f8fafc;
       border: 1px solid #e2e8f0;
       line-height: 1.4;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     .status.error {
       background: #fef2f2;
@@ -157,6 +164,8 @@ export class CaqdasGithubSyncPanel extends LitElement {
     .muted {
       color: #64748b;
       font-size: 0.78rem;
+      overflow-wrap: anywhere;
+      word-break: break-word;
     }
     a {
       color: #0969da;
