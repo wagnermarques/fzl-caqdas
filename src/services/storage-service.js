@@ -87,6 +87,8 @@ export function normalizeExcerpt(raw, doc = null) {
     page: toInt(q.page) || null,
     endPage: toInt(q.endPage) || null,
     codeId: q.codeId ? String(q.codeId) : null,
+    color: q.color ? String(q.color) : null,
+    rects: Array.isArray(q.rects) ? q.rects : undefined,
     note: String(q.note || ''),
     createdAt,
     updatedAt: typeof q.updatedAt === 'string' ? q.updatedAt : createdAt

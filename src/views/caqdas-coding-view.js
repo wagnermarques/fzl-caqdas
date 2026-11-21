@@ -11,6 +11,7 @@ import '@material/web/icon/icon.js'
 import '@material/web/select/outlined-select.js'
 import '@material/web/select/select-option.js'
 import '@fzl/webcomponents-lit/reader-chapterview'
+import '@fzl/webcomponents-lit/reader-mark-bar'
 import '../components/caqdas-github-sync-panel.js'
 import {
   anchorSelection,
@@ -697,6 +698,10 @@ export class CaqdasCodingView extends LitElement {
       reader.pendingRange = null
       reader.clearSelection?.()
     }
+    const markBar = this.shadowRoot?.querySelector('fzl-reader-mark-bar')
+    if (markBar) {
+      markBar.hide()
+    }
   }
 
   // --- leitor ------------------------------------------------------------------------
@@ -726,7 +731,7 @@ export class CaqdasCodingView extends LitElement {
 
   /** Seleção feita no leitor (fzl-reader-selection): âncora W3C + trecho pendente visível. */
   _handleReaderSelection(e) {
-    const { text, start, end, prefix, suffix, blockIndex, page, endPage, rects } = e.detail || {}
+    const { text, start, end, prefix, suffix, blockIndex, page, endPage, rect, rects } = e.detail || {}
     if (!text) return
     this.selectionAnchor = {
       text,
@@ -737,11 +742,16 @@ export class CaqdasCodingView extends LitElement {
       blockIndex: blockIndex ?? null,
       page: page ?? null,
       endPage: endPage ?? null,
+      rect: rect || null,
       rects: rects ?? null
     }
     this.selectedText = text
     this.selectedUrId = ''
     if (this._reader) this._reader.pendingRange = { start, end }
+    const markBar = this.shadowRoot?.querySelector('fzl-reader-mark-bar')
+    if (markBar) {
+      markBar.showAt(rect, text)
+    }
   }
 
   _handleReaderSelectionClear() {
@@ -750,6 +760,72 @@ export class CaqdasCodingView extends LitElement {
     this.selectedText = ''
     this.selectionAnchor = null
     if (this._reader) this._reader.pendingRange = null
+    const markBar = this.shadowRoot?.querySelector('fzl-reader-mark-bar')
+    if (markBar) {
+      markBar.hide()
+    }
+  }
+
+  _onBarPointerDown(e) {
+    const path = e.composedPath?.() || []
+    const isDrag = path.some((el) => el.classList?.contains?.('drag-handle'))
+    if (!isDrag) {
+      e.preventDefault()
+    }
+  }
+
+  _handleMarkColor(e) {
+    const color = e.detail?.color
+    const colorHex = color?.bg || color?.background || '#fef08a'
+    const colorName = color?.name || 'Grifo'
+    if (!this.selectedText || !this.selectionAnchor) return
+
+    const title =
+      this.excerptTitle.trim() ||
+      `${colorName}: "${this.selectedText.slice(0, 45).trim()}${this.selectedText.length > 45 ? '…' : ''}"`
+    const saved = researchStorage.addQuotation(this.selectedDocId, {
+      ...this.selectionAnchor,
+      title,
+      color: colorHex,
+      codeId: this.selectedCodeId || null
+    })
+    if (saved) {
+      this.activeExcerptId = saved.id
+    }
+    this._clearSelection()
+  }
+
+  _handleMarkAction(e) {
+    const action = e.detail?.action
+    if (action === 'clear') {
+      this._clearSelection()
+    } else if (action === 'note') {
+      const defaultTitle = this.excerptTitle.trim() || this.selectedText.slice(0, 50).trim()
+      const title = prompt('Título / Nota para este trecho:', defaultTitle)
+      if (title !== null && title.trim()) {
+        this.excerptTitle = title.trim()
+        this._handleSaveExcerpt()
+      }
+    } else if (action === 'copy') {
+      if (navigator.clipboard && this.selectedText) {
+        navigator.clipboard.writeText(this.selectedText).catch(() => {})
+      }
+    } else if (action === 'share') {
+      const doc = this.documents.find((d) => d.id === this.selectedDocId)
+      const text = this.selectedText
+      const title = doc?.title || 'Trecho selecionado'
+      if (navigator.share && text) {
+        navigator.share({ title, text }).catch(() => {})
+      } else if (text && navigator.clipboard) {
+        navigator.clipboard.writeText(`"${text}" — (${title})`).catch(() => {})
+      }
+    } else if (action === 'underline') {
+      this._handleMarkColor({ detail: { color: { bg: '#fef08a', name: 'Grifo' } } })
+    }
+  }
+
+  _handleMarkClose() {
+    this._clearSelection()
   }
 
   /** Texto canônico do documento (o mesmo que reader.plainText), para ancorar os trechos. */
@@ -765,7 +841,7 @@ export class CaqdasCodingView extends LitElement {
     return excerpts.map((q) => {
       const pos = plain ? anchorSelection(plain, q) : null
       const code = q.codeId ? codeMap.get(q.codeId) : null
-      return { q, pos, color: code?.color || DEFAULT_EXCERPT_COLOR }
+      return { q, pos, color: q.color || code?.color || DEFAULT_EXCERPT_COLOR }
     })
   }
 
@@ -1218,6 +1294,16 @@ export class CaqdasCodingView extends LitElement {
           ${this._renderExcerptList(excerpts, codeMap, orphanIds, posById)}
         </div>
       </div>
+
+      <fzl-reader-mark-bar
+        mode="floating"
+        ?visible=${Boolean(this.selectedText && this.selectionAnchor)}
+        .selectedText=${this.selectedText}
+        @fzl-mark=${this._handleMarkColor}
+        @fzl-reader-action=${this._handleMarkAction}
+        @fzl-bar-close=${this._handleMarkClose}
+        @pointerdown=${this._onBarPointerDown}
+      ></fzl-reader-mark-bar>
     `
   }
 }
