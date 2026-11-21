@@ -473,16 +473,84 @@ export class CaqdasCodingView extends LitElement {
     this._syncReaderDoc()
   }
 
+  /** Garante uma cópia local (IndexedDB) de um documento que só existe na nuvem. */
+  async _ensureLocalCopy(doc) {
+    if (!doc?.googleDriveFileId) return null
+    const providerLabel = doc.storageProvider === 'onedrive' ? 'OneDrive' : 'Google Drive'
+    this.pdfStatus = {
+      docId: doc.id,
+      state: 'downloading',
+      message: `Baixando arquivo do ${providerLabel} para este dispositivo…`
+    }
+    try {
+      const file = await this.cloudController.downloadCloudFile(doc)
+      if (!file) {
+        if (this.pdfStatus?.docId === doc.id) {
+          this.pdfStatus = { docId: doc.id, state: 'no-file' }
+        }
+        return null
+      }
+      await researchStorage.saveBinaryFile(doc.id, file)
+      if (!doc.size) {
+        researchStorage.updateDocument(doc.id, { size: file.size })
+      }
+      this.documents = researchStorage.getDocuments()
+      if (this.pdfStatus?.docId === doc.id) {
+        this.pdfStatus = null
+      }
+      return file
+    } catch (err) {
+      console.warn('[FZL CAQDAS] Falha ao baixar arquivo da nuvem:', err)
+      if (this.pdfStatus?.docId === doc.id) {
+        this.pdfStatus = { docId: doc.id, state: 'no-file' }
+      }
+      return null
+    }
+  }
+
+  async _retryDownloadCloudFile(doc) {
+    if (!doc) return
+    const file = await this._ensureLocalCopy(doc)
+    if (file && this.selectedDocId === doc.id) {
+      const isPdf = doc.type === 'pdf' || /\.pdf$/i.test(doc.extension || doc.title || '')
+      if (isPdf) {
+        this.pdfFile = file
+        if (!this.pdfjs) {
+          this.pdfjs = await loadPdfjs()
+        }
+        await this._ensurePdfText(doc)
+      }
+      const updated = this.documents.find((d) => d.id === doc.id) || doc
+      this.readerController.openDocument({
+        id: updated.id,
+        name: updated.title,
+        category: updated.type === 'docx' ? 'docx' : updated.type === 'pdf' ? 'pdf' : 'text',
+        extension: updated.extension || (updated.type === 'docx' ? '.docx' : '.txt'),
+        textContent: updated.content || '',
+        blocks: updated.docxBlocks || undefined
+      })
+      this.requestUpdate()
+    }
+  }
+
   /** PDF sem texto ainda (importado antes da extração): extrai do arquivo salvo no navegador. */
   async _ensurePdfText(doc) {
     const isPdf = doc?.type === 'pdf' || /\.pdf$/i.test(doc?.extension || doc?.title || '')
     if (!isPdf || doc.textExtractedAt || String(doc.content || '').trim()) {
-      if (this.pdfStatus?.docId === doc?.id && this.pdfStatus.state !== 'extracting') this.pdfStatus = null
+      if (this.pdfStatus?.docId === doc?.id && this.pdfStatus.state !== 'extracting' && this.pdfStatus.state !== 'downloading') {
+        this.pdfStatus = null
+      }
       return
     }
-    if (this.pdfStatus?.docId === doc.id && this.pdfStatus.state === 'extracting') return
-    const file = researchStorage.getBinaryFile(doc.id)
+    if (this.pdfStatus?.docId === doc.id && (this.pdfStatus.state === 'extracting' || this.pdfStatus.state === 'downloading')) {
+      return
+    }
+    let file = researchStorage.getBinaryFile(doc.id)
     if (!file) {
+      file = await researchStorage.getBinaryFileAsync(doc.id)
+    }
+    if (!file) {
+      if (this.pdfStatus?.docId === doc.id && this.pdfStatus.state === 'downloading') return
       this.pdfStatus = { docId: doc.id, state: 'no-file' }
       return
     }
@@ -494,7 +562,20 @@ export class CaqdasCodingView extends LitElement {
         }
       })
       researchStorage.updateDocument(doc.id, pdfDocumentFields(result))
+      this.documents = researchStorage.getDocuments()
       this.pdfStatus = null
+      if (this.selectedDocId === doc.id) {
+        const updated = this.documents.find((d) => d.id === doc.id) || doc
+        this.readerController.openDocument({
+          id: updated.id,
+          name: updated.title,
+          category: 'pdf',
+          extension: updated.extension || '.pdf',
+          textContent: updated.content || '',
+          blocks: updated.docxBlocks || undefined
+        })
+        this.requestUpdate()
+      }
     } catch (err) {
       console.warn('[FZL CAQDAS] Falha ao extrair texto do PDF:', err)
       const locked = /password/i.test(String(err?.name || err?.message || ''))
@@ -514,13 +595,45 @@ export class CaqdasCodingView extends LitElement {
       </div>`
     }
     if (!st) return ''
-    const text =
-      st.state === 'extracting'
-        ? `⏳ Extraindo o texto do PDF${st.total ? ` (página ${st.page} de ${st.total})` : ''}…`
-        : st.state === 'no-file'
-          ? '📄 O arquivo deste PDF não está neste dispositivo. Abra-o em Fontes (“Continuar Leitura”) para baixá-lo da nuvem, ou reimporte o arquivo.'
-          : `⚠️ Não foi possível ler o texto do PDF: ${st.message}`
-    return html`<div slot="empty" class="pdf-status">${text}</div>`
+    if (st.state === 'downloading') {
+      return html`<div slot="empty" class="pdf-status">
+        ⏳ ${st.message || 'Baixando arquivo da nuvem para este dispositivo…'}
+      </div>`
+    }
+    if (st.state === 'extracting') {
+      return html`<div slot="empty" class="pdf-status">
+        ⏳ Extraindo o texto do PDF${st.total ? ` (página ${st.page} de ${st.total})` : ''}…
+      </div>`
+    }
+    if (st.state === 'no-file') {
+      const providerLabel = doc?.storageProvider === 'onedrive' ? 'OneDrive' : 'Google Drive'
+      return html`<div slot="empty" class="pdf-status">
+        <p>📄 O arquivo deste PDF não está neste dispositivo.</p>
+        ${doc?.googleDriveFileId
+          ? html`<button
+              type="button"
+              class="btn-local-badge"
+              style="margin-top: 8px; cursor: pointer;"
+              @click=${() => this._retryDownloadCloudFile(doc)}
+            >
+              ☁️ Baixar do ${providerLabel} agora
+            </button>`
+          : html`<span>Abra-o em Fontes ou reimporte o arquivo.</span>`}
+      </div>`
+    }
+    return html`<div slot="empty" class="pdf-status">
+      ⚠️ Não foi possível ler o texto do PDF: ${st.message}
+      ${doc?.googleDriveFileId
+        ? html`<br /><button
+            type="button"
+            class="btn-local-badge"
+            style="margin-top: 8px; cursor: pointer;"
+            @click=${() => this._retryDownloadCloudFile(doc)}
+          >
+            🔄 Tentar baixar novamente
+          </button>`
+        : ''}
+    </div>`
   }
 
   async _syncReaderDoc() {
@@ -530,15 +643,25 @@ export class CaqdasCodingView extends LitElement {
       return
     }
     const isPdf = doc.type === 'pdf' || /\.pdf$/i.test(doc.extension || doc.title || '')
+
+    let file = researchStorage.getBinaryFile(doc.id)
+    if (!file) {
+      file = await researchStorage.getBinaryFileAsync(doc.id)
+    }
+
+    if (!file && doc.googleDriveFileId) {
+      file = await this._ensureLocalCopy(doc)
+    }
+
+    if (this.selectedDocId !== doc.id) return
+
     if (isPdf) {
-      let file = researchStorage.getBinaryFile(doc.id)
-      if (!file) {
-        file = await researchStorage.getBinaryFileAsync(doc.id)
-      }
       this.pdfFile = file || null
       if (file && !this.pdfjs) {
         void loadPdfjs().then((pdfjs) => {
-          this.pdfjs = pdfjs
+          if (this.selectedDocId === doc.id) {
+            this.pdfjs = pdfjs
+          }
         })
       }
     } else {
@@ -546,13 +669,14 @@ export class CaqdasCodingView extends LitElement {
     }
 
     void this._ensurePdfText(doc)
+    const currentDoc = this.documents.find((d) => d.id === this.selectedDocId) || doc
     this.readerController.openDocument({
-      id: doc.id,
-      name: doc.title,
-      category: doc.type === 'docx' ? 'docx' : doc.type === 'pdf' ? 'pdf' : 'text',
-      extension: doc.extension || (doc.type === 'docx' ? '.docx' : '.txt'),
-      textContent: doc.content || '',
-      blocks: doc.docxBlocks || undefined
+      id: currentDoc.id,
+      name: currentDoc.title,
+      category: currentDoc.type === 'docx' ? 'docx' : currentDoc.type === 'pdf' ? 'pdf' : 'text',
+      extension: currentDoc.extension || (currentDoc.type === 'docx' ? '.docx' : '.txt'),
+      textContent: currentDoc.content || '',
+      blocks: currentDoc.docxBlocks || undefined
     })
   }
 
