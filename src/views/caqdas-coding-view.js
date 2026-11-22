@@ -15,7 +15,6 @@ import '@fzl/webcomponents-lit/reader-mark-bar'
 import '../components/caqdas-github-sync-panel.js'
 import {
   anchorSelection,
-  buildTextQuote,
   readerBlocksFromText,
   readerPlainText
 } from '@fzl/webcomponents-lit/document-reader'
@@ -371,44 +370,6 @@ export class CaqdasCodingView extends LitElement {
       padding: 2px 4px;
     }
 
-    .ur-chips-container {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 6px;
-      margin-top: 12px;
-      padding: 10px;
-      background: #f4f8f8;
-      border-radius: 8px;
-      border: 1px solid #e0eeee;
-      min-width: 0;
-      max-width: 100%;
-    }
-
-    .ur-chips-container fzl-reader-chapterview-group {
-      width: 100%;
-      max-width: 100%;
-      min-width: 0;
-    }
-
-    .ur-chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 4px 8px;
-      background: #ffffff;
-      border: 1px solid #c2dede;
-      border-radius: 6px;
-      font-size: 0.78rem;
-      cursor: pointer;
-      transition: all 0.15s ease;
-    }
-
-    .ur-chip:hover {
-      background: #006a6a;
-      color: #ffffff;
-      border-color: #006a6a;
-    }
-
     .btn-docs-badge {
       display: inline-flex;
       align-items: center;
@@ -497,8 +458,6 @@ export class CaqdasCodingView extends LitElement {
     selectedDocId: { state: true },
     selectedText: { state: true },
     selectedCodeId: { state: true },
-    selectedUrId: { state: true },
-    showUrList: { state: true },
     selectionAnchor: { state: true },
     excerptTitle: { state: true },
     editingExcerptId: { state: true },
@@ -518,8 +477,6 @@ export class CaqdasCodingView extends LitElement {
     this.selectedDocId = ''
     this.selectedText = ''
     this.selectedCodeId = ''
-    this.selectedUrId = ''
-    this.showUrList = true
     this.selectionAnchor = null
     this.excerptTitle = ''
     this.editingExcerptId = ''
@@ -591,10 +548,8 @@ export class CaqdasCodingView extends LitElement {
   }
 
   _syncPersistenceChips() {
-    const chapterGroup = this.shadowRoot?.querySelector('fzl-reader-chapterview-group') || null
     const chapterViews = Array.from(this.shadowRoot?.querySelectorAll('fzl-reader-chapterview') || [])
     this.cloudController.configurePersistenceComponents({
-      chapterViewGroup: chapterGroup,
       chapterViews
     })
   }
@@ -820,7 +775,6 @@ export class CaqdasCodingView extends LitElement {
   _selectDoc(id) {
     this.selectedDocId = id
     this._clearSelection()
-    this.selectedUrId = ''
     this.editingExcerptId = ''
     this._syncReaderDoc()
   }
@@ -882,7 +836,6 @@ export class CaqdasCodingView extends LitElement {
       rects: rects ?? null
     }
     this.selectedText = text
-    this.selectedUrId = ''
     if (this._reader) this._reader.pendingRange = { start, end }
     const markBar = this.shadowRoot?.querySelector('fzl-reader-mark-bar')
     if (markBar) {
@@ -979,20 +932,6 @@ export class CaqdasCodingView extends LitElement {
       const code = q.codeId ? codeMap.get(q.codeId) : null
       return { q, pos, color: q.color || code?.color || DEFAULT_EXCERPT_COLOR }
     })
-  }
-
-  _selectRegistrationUnit(ur) {
-    this.selectedUrId = ur.urId
-    this.selectedText = ur.text
-    const plain = String(this._reader?.plainText || '')
-    const start = plain.indexOf(ur.text)
-    if (start < 0) {
-      this.selectionAnchor = { text: ur.text, start: null, end: null, prefix: '', suffix: '', blockIndex: null }
-      return
-    }
-    const end = start + ur.text.length
-    this.selectionAnchor = { ...buildTextQuote(plain, start, end), start, end, blockIndex: null }
-    if (this._reader) this._reader.pendingRange = { start, end }
   }
 
   // --- trechos ------------------------------------------------------------------------
@@ -1179,14 +1118,6 @@ export class CaqdasCodingView extends LitElement {
     const docFolder = researchStorage.formatPersistenceFolder(
       doc?.folder || (doc?.type === 'interview' ? 'entrevistas' : 'documentos')
     )
-    const urs = this.readerController.toRegistrationUnits()
-    const urChipItems = urs.map((ur) => ({
-      id: ur.urId,
-      value: ur.urId,
-      label: ur.label,
-      count: ur.wordCount,
-      color: '#006a6a'
-    }))
     const excerpts = doc ? researchStorage.getDocumentExcerpts(doc.id) : []
     const anchored = this._anchoredExcerpts(doc, excerpts, codeMap)
     const annotations = anchored
@@ -1259,34 +1190,6 @@ export class CaqdasCodingView extends LitElement {
             Participante: <strong>${doc?.participant || 'N/A'}</strong> | Pasta: <code>${docFolder}</code>
             | Palavras: <strong>${wordCount}</strong>
           </div>
-
-          ${urChipItems.length
-            ? html`
-                <!-- Unidades de Registro de Bardin (URs) via <fzl-reader-chapterview-group> -->
-                <div class="ur-chips-container">
-                  <span style="font-size: 0.78rem; font-weight: 600; color: #004d40; width: 100%;">
-                    Unidades de Registro (Bardin) — clique em uma UR para selecioná-la inteira:
-                  </span>
-                  <fzl-reader-chapterview-group
-                    aria-label="Unidades de Registro de Bardin"
-                    selection-mode="single"
-                    data-storage-provider=${activeProvider}
-                    data-home-dir=${homeDirName}
-                    .items=${urChipItems}
-                    .selected=${this.selectedUrId}
-                    @fzl-change=${(e) => {
-                      const urId = e.detail?.selected || e.detail?.value
-                      const match = urs.find((u) => u.urId === urId)
-                      if (match) {
-                        this._selectRegistrationUnit(match)
-                      } else {
-                        this.selectedUrId = ''
-                      }
-                    }}
-                  ></fzl-reader-chapterview-group>
-                </div>
-              `
-            : ''}
 
           <div class="reader-frame">
             <fzl-document-reader
