@@ -393,6 +393,51 @@ export class CaqdasCodingView extends LitElement {
       box-shadow: 0 0 0 1px var(--md-sys-color-primary, #006a6a);
     }
 
+    .quote-list-item.collapsible {
+      padding: 7px 10px;
+    }
+
+    .excerpt-toggle {
+      width: 100%;
+      background: transparent;
+      border: none;
+      padding: 0;
+      font: inherit;
+      color: inherit;
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .excerpt-chevron {
+      font-size: 18px;
+      width: 18px;
+      height: 18px;
+      flex: none;
+      color: #64748b;
+      margin-top: 1px;
+    }
+
+    .excerpt-color-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex: none;
+      margin-top: 6px;
+    }
+
+    .excerpt-title-label {
+      flex: 1 1 auto;
+      min-width: 0;
+      font-weight: 600;
+      font-size: 0.86rem;
+      line-height: 1.35;
+      overflow-wrap: anywhere;
+      word-break: break-word;
+    }
+
     .save-excerpt {
       padding: 6px;
       background: var(--md-sys-color-surface, #fff);
@@ -531,6 +576,7 @@ export class CaqdasCodingView extends LitElement {
     excerptTitle: { state: true },
     editingExcerptId: { state: true },
     activeExcerptId: { state: true },
+    expandedAsideIds: { state: true },
     readerPrefs: { state: true },
     pdfStatus: { state: true },
     pdfFile: { state: true },
@@ -553,6 +599,7 @@ export class CaqdasCodingView extends LitElement {
     this.excerptTitle = ''
     this.editingExcerptId = ''
     this.activeExcerptId = ''
+    this.expandedAsideIds = new Set()
     this.readerPrefs = this._loadReaderPrefs()
     this.pdfStatus = null
     this.pdfFile = null
@@ -859,7 +906,18 @@ export class CaqdasCodingView extends LitElement {
     this.selectedDocId = id
     this._clearSelection()
     this.editingExcerptId = ''
+    this.expandedAsideIds = new Set()
     this._syncReaderDoc()
+  }
+
+  _toggleAsideExcerpt(quoteId) {
+    const next = new Set(this.expandedAsideIds)
+    if (next.has(quoteId)) {
+      next.delete(quoteId)
+    } else {
+      next.add(quoteId)
+    }
+    this.expandedAsideIds = next
   }
 
   _clearSelection() {
@@ -1193,13 +1251,15 @@ export class CaqdasCodingView extends LitElement {
   }
 
   /** Lista de trechos (usada na lateral da página e no painel do leitor em tela cheia). */
-  _renderExcerptList(excerpts, codeMap, orphanIds, posById) {
+  _renderExcerptList(excerpts, codeMap, orphanIds, posById, { collapsible = false } = {}) {
     return excerpts.length === 0 ? html`
             <div style="color: #777; font-size: 0.9rem;">
               Nenhum trecho salvo neste documento ainda.
             </div>
           ` : excerpts.map(q => {
             const code = q.codeId ? codeMap.get(q.codeId) || { name: 'Código removido', color: '#999' } : null
+            const accentColor = code?.color || q.color || DEFAULT_EXCERPT_COLOR
+            const isExpanded = !collapsible || this.expandedAsideIds.has(q.id) || this.editingExcerptId === q.id
             const pos = posById.get(q.id)
             const dateLabel =
               new Date(q.createdAt).getTime() > 0 ? new Date(q.createdAt).toLocaleString('pt-BR') : ''
@@ -1215,7 +1275,7 @@ export class CaqdasCodingView extends LitElement {
             }
             return html`
               <div
-                class="quote-list-item ${this.activeExcerptId === q.id ? 'active' : ''}"
+                class="quote-list-item ${collapsible ? 'collapsible' : ''} ${this.activeExcerptId === q.id ? 'active' : ''}"
                 data-excerpt-id=${q.id}
               >
                 <div class="excerpt-title">
@@ -1232,43 +1292,67 @@ export class CaqdasCodingView extends LitElement {
                           @blur=${(e) => this._handleSaveTitle(q.id, e.target.value)}
                         />
                       `
-                    : q.title || html`<span style="color: #999; font-weight: 400;">(sem título)</span>`}
+                    : collapsible
+                      ? html`
+                          <button
+                            type="button"
+                            class="excerpt-toggle"
+                            aria-expanded=${isExpanded ? 'true' : 'false'}
+                            title=${isExpanded ? 'Recolher conteúdo da marcação' : 'Expandir conteúdo da marcação'}
+                            @click=${() => this._toggleAsideExcerpt(q.id)}
+                          >
+                            <md-icon class="excerpt-chevron">${isExpanded ? 'expand_more' : 'chevron_right'}</md-icon>
+                            <span class="excerpt-color-dot" style="background-color: ${accentColor};"></span>
+                            <span class="excerpt-title-label">
+                              ${q.title || html`<span style="color: #999; font-weight: 400;">(sem título)</span>`}
+                            </span>
+                          </button>
+                        `
+                      : q.title || html`<span style="color: #999; font-weight: 400;">(sem título)</span>`}
                 </div>
-                <span class="quote-text">“${q.text}”</span>
-                <div class="excerpt-meta">
-                  ${orphanIds.has(q.id)
-                    ? html`<strong style="color: #b45309;">não encontrado no texto atual</strong>${dateLabel
-                        ? ` · ${dateLabel}`
-                        : ''}`
-                    : metaParts.join(' · ')}
-                </div>
-                <div class="quote-footer">
-                  ${code
-                    ? html`<span class="code-chip" style="background-color: ${code.color};">${code.name}</span>`
-                    : html`<span></span>`}
-                  <span>
-                    <button class="link-btn" @click=${() => this._goToExcerpt(q)}>Ir para</button>
-                    <button
-                      class="link-btn"
-                      @click=${async () => {
-                        this.editingExcerptId = q.id
-                        await this.updateComplete
-                        this._excerptElement(q.id, '.excerpt-title input')?.focus()
-                      }}
-                    >
-                      Renomear
-                    </button>
-                    <button class="remove-btn" @click=${() => this._handleDeleteQuote(q)}>Remover</button>
-                  </span>
-                </div>
+                ${isExpanded
+                  ? html`
+                      <span class="quote-text">“${q.text}”</span>
+                      <div class="excerpt-meta">
+                        ${orphanIds.has(q.id)
+                          ? html`<strong style="color: #b45309;">não encontrado no texto atual</strong>${dateLabel
+                              ? ` · ${dateLabel}`
+                              : ''}`
+                          : metaParts.join(' · ')}
+                      </div>
+                      <div class="quote-footer">
+                        ${code
+                          ? html`<span class="code-chip" style="background-color: ${code.color};">${code.name}</span>`
+                          : html`<span></span>`}
+                        <span>
+                          <button class="link-btn" @click=${() => this._goToExcerpt(q)}>Ir para</button>
+                          <button
+                            class="link-btn"
+                            @click=${async () => {
+                              this.editingExcerptId = q.id
+                              await this.updateComplete
+                              this._excerptElement(
+                                q.id,
+                                '.excerpt-title input',
+                                collapsible ? '.aside-list' : '.sidebar-card'
+                              )?.focus()
+                            }}
+                          >
+                            Renomear
+                          </button>
+                          <button class="remove-btn" @click=${() => this._handleDeleteQuote(q)}>Remover</button>
+                        </span>
+                      </div>
+                    `
+                  : ''}
               </div>
             `
           })
   }
 
   /** Item da lista que está à vista: o do painel do leitor em tela cheia, ou o da lateral. */
-  _excerptElement(id, inner = '') {
-    const scope = this._reader?.fullscreen ? '.aside-list' : '.sidebar-card'
+  _excerptElement(id, inner = '', explicitScope = '') {
+    const scope = explicitScope || (this._reader?.fullscreen ? '.aside-list' : '.sidebar-card')
     const sel = `${scope} [data-excerpt-id="${CSS.escape(id)}"] ${inner}`.trim()
     return this.shadowRoot?.querySelector(sel) || null
   }
@@ -1426,7 +1510,7 @@ export class CaqdasCodingView extends LitElement {
                         : ''}
                     </div>`
                   : ''}
-                ${this._renderExcerptList(excerpts, codeMap, orphanIds, posById)}
+                ${this._renderExcerptList(excerpts, codeMap, orphanIds, posById, { collapsible: true })}
               </div>
               ${html`
                     <form
