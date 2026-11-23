@@ -165,62 +165,6 @@ export class CaqdasPersistenceConfigView extends LitElement {
       padding: 20px;
     }
 
-    .doc-link-table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 12px;
-      font-size: 0.88rem;
-    }
-
-    .doc-link-table th,
-    .doc-link-table td {
-      border: 1px solid #e2e8f0;
-      padding: 8px 12px;
-      text-align: left;
-    }
-
-    .doc-link-table th {
-      background: #f1f5f9;
-      font-weight: 600;
-    }
-
-    .btn-external-link {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      background: #e0f2fe;
-      color: #0284c7;
-      padding: 4px 10px;
-      border-radius: 6px;
-      text-decoration: none;
-      font-weight: 600;
-      font-size: 0.8rem;
-      border: 1px solid #bae6fd;
-    }
-
-    .btn-external-link:hover {
-      background: #bae6fd;
-    }
-
-    .btn-local-file {
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      background: #ecfdf5;
-      color: #065f46;
-      padding: 4px 10px;
-      border-radius: 6px;
-      font-weight: 600;
-      font-size: 0.8rem;
-      border: 1px solid #a7f3d0;
-      cursor: pointer;
-      font-family: inherit;
-    }
-
-    .btn-local-file:hover {
-      background: #d1fae5;
-    }
-
     .diag-box {
       margin-top: 12px;
       padding: 10px 12px;
@@ -252,10 +196,8 @@ export class CaqdasPersistenceConfigView extends LitElement {
   `
 
   static properties = {
-    documents: { state: true },
     currentUser: { state: true },
     cloudConfig: { state: true },
-    _syncingDocIds: { state: true },
     _driveScopeStatus: { state: true },
     _driveDiagnostic: { state: true },
     _checkingDrive: { state: true }
@@ -263,11 +205,9 @@ export class CaqdasPersistenceConfigView extends LitElement {
 
   constructor() {
     super()
-    this.documents = []
     this.currentUser = authService.getCurrentUser?.() || null
     this.cloudConfig = researchStorage.getCloudSyncConfig()
     this.cloudController = new CaqdasPersonalCloudDocsController(this)
-    this._syncingDocIds = new Set()
     this._driveScopeStatus = 'unknown'
     this._driveDiagnostic = null
     this._checkingDrive = false
@@ -275,7 +215,6 @@ export class CaqdasPersistenceConfigView extends LitElement {
 
   connectedCallback() {
     super.connectedCallback()
-    this.documents = researchStorage.getDocuments()
     this.cloudConfig = researchStorage.getCloudSyncConfig()
     this._unsubAuth = authService.subscribe((user) => {
       this.currentUser = user
@@ -286,9 +225,6 @@ export class CaqdasPersistenceConfigView extends LitElement {
         void this._probeDriveAccess()
       })
     })
-    this._onDataChanged = () => {
-      this.documents = researchStorage.getDocuments()
-    }
     this._onCloudChanged = (e) => {
       this.cloudConfig = e.detail || researchStorage.getCloudSyncConfig()
       this.requestUpdate()
@@ -297,14 +233,12 @@ export class CaqdasPersistenceConfigView extends LitElement {
         void this._probeDriveAccess()
       })
     }
-    window.addEventListener('caqdas-data-changed', this._onDataChanged)
     window.addEventListener('caqdas-cloud-sync-changed', this._onCloudChanged)
   }
 
   disconnectedCallback() {
     super.disconnectedCallback()
     this._unsubAuth?.()
-    window.removeEventListener('caqdas-data-changed', this._onDataChanged)
     window.removeEventListener('caqdas-cloud-sync-changed', this._onCloudChanged)
   }
 
@@ -323,13 +257,6 @@ export class CaqdasPersistenceConfigView extends LitElement {
       chapterViewGroup: chapterGroup,
       chapterViews: chapterGroup ? [chapterGroup, ...chapterViews] : chapterViews
     })
-  }
-
-  _setDocSyncing(docId, active) {
-    const next = new Set(this._syncingDocIds)
-    if (active) next.add(docId)
-    else next.delete(docId)
-    this._syncingDocIds = next
   }
 
   _updateCloudConfig(patch) {
@@ -400,84 +327,10 @@ export class CaqdasPersistenceConfigView extends LitElement {
     }
   }
 
-  async _syncDocViaController(doc) {
-    if (!researchStorage.isCloudAuthenticated(this.currentUser)) {
-      alert('Faça login com Google ou Microsoft para sincronizar documentos na nuvem.')
-      return
-    }
-    if (this._syncingDocIds.has(doc.id)) return
-    this._setDocSyncing(doc.id, true)
-
-    try {
-      const activeProvider = researchStorage.getEffectivePersistenceProvider(this.currentUser)
-      const result = await this.cloudController.syncCorpusDocument(doc, {
-        convertToGoogleDocs: false,
-        folderId:
-          activeProvider === 'onedrive'
-            ? this.cloudConfig.oneDriveFolderId
-            : this.cloudConfig.googleDriveFolderId
-      })
-
-      if (result.success) {
-        this.documents = researchStorage.getDocuments()
-        const targetLabel = activeProvider === 'onedrive' ? 'OneDrive' : 'Google Drive'
-        this._driveDiagnostic = {
-          step: 'ok',
-          message: `Documento "${doc.title}" enviado com sucesso para o ${targetLabel}.`
-        }
-        alert(`✔ Documento "${doc.title}" sincronizado com sucesso no ${targetLabel}!`)
-      } else {
-        const msg = result.error || 'Erro desconhecido'
-        this._driveDiagnostic = {
-          step: /accessNotConfigured|Google Drive API/i.test(msg) ? 'api-disabled' : 'error',
-          activationUrl: 'https://console.cloud.google.com/apis/library/drive.googleapis.com',
-          message: msg
-        }
-        alert(`Não foi possível sincronizar na nuvem: ${msg}`)
-      }
-    } catch (err) {
-      this._driveDiagnostic = {
-        step: 'error',
-        message: err?.message || 'Erro ao sincronizar documento.'
-      }
-      alert(`Erro ao sincronizar: ${err.message}`)
-    } finally {
-      this._setDocSyncing(doc.id, false)
-    }
-  }
-
-  _simulateDocsSyncForSample() {
-    if (!researchStorage.isCloudAuthenticated(this.currentUser)) {
-      alert('Faça login com Google ou Microsoft antes de simular a sincronização na nuvem.')
-      return
-    }
-    const docxDocs = this.documents.filter((d) => d.extension === '.docx' || d.type === 'docx')
-    if (docxDocs.length === 0) {
-      alert('Nenhum documento .docx encontrado no corpus para sincronizar.')
-      return
-    }
-
-    const nowIso = new Date().toISOString()
-    for (const d of docxDocs) {
-      const mockId = `1docs_${d.id}_${Date.now()}`
-      researchStorage.updateDocument(d.id, {
-        status: 'synced',
-        storageProvider: 'google-drive',
-        externalViewerUrl: `https://drive.google.com/file/d/${mockId}/view`,
-        externalViewerLabel: 'Abrir no Google Drive ↗',
-        googleDriveFileId: mockId,
-        syncedAt: nowIso
-      })
-    }
-    this.documents = researchStorage.getDocuments()
-    alert(`✔ ${docxDocs.length} documento(s) sincronizado(s) com links no Google Drive!`)
-  }
-
   render() {
     const homeDirName = researchStorage.getHomeDirName()
     const isAuthenticated = researchStorage.isCloudAuthenticated(this.currentUser)
     const rawProvider = researchStorage.getEffectivePersistenceProvider(this.currentUser)
-    const anySyncing = this._syncingDocIds.size > 0
     const socialAuthCfg = authService.getSocialAuthConfig?.() || {}
     const effectiveGoogleClientId = this.cloudConfig.googleClientId || socialAuthCfg.googleClientId || ''
     const effectiveMicrosoftClientId = this.cloudConfig.microsoftClientId || socialAuthCfg.microsoftClientId || ''
@@ -542,7 +395,7 @@ export class CaqdasPersistenceConfigView extends LitElement {
           ${isAuthenticated
             ? html`
                 <span>
-                  ${anySyncing ? '🔄 Sincronizando...' : '☁️ Persistência ativa:'}
+                  ☁️ Persistência ativa:
                   <strong>${getPersistenceProviderLabel(rawProvider)}</strong>
                   | Pasta Inicial: <code>/${homeDirName}</code>
                   ${rawProvider === 'google-drive' && this.cloudConfig.googleDriveFolderId
@@ -924,101 +777,6 @@ export class CaqdasPersistenceConfigView extends LitElement {
       <!-- Trechos e projeto no GitHub (repositório privado do usuário) -->
       <div class="section-card">
         <caqdas-github-sync-panel></caqdas-github-sync-panel>
-      </div>
-
-      <!-- Estado de Sincronização do Corpus -->
-      <div class="section-card">
-        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;">
-          <h2 style="margin: 0; font-size: 1.15rem; color: #006a6a;">
-            Documentos no Corpus &amp; Estado de Sincronização
-          </h2>
-          <md-outlined-button
-            ?disabled=${!isAuthenticated || anySyncing}
-            @click=${this._simulateDocsSyncForSample}
-          >
-            <md-icon slot="icon">sync</md-icon>
-            Sincronizar Arquivos no Google Drive (Simulação)
-          </md-outlined-button>
-        </div>
-
-        <table class="doc-link-table">
-          <thead>
-            <tr>
-              <th>Documento</th>
-              <th>Tipo</th>
-              <th>Participante / Pasta</th>
-              <th>Status de Sincronização</th>
-              <th>Visualizador / Ação</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${this.documents.map((doc) => {
-              const syncState = researchStorage.getDocumentSyncState(doc, this._syncingDocIds)
-              const hasDocs = Boolean(doc.externalViewerUrl)
-              const hasLocal = researchStorage.hasLocalDocument(doc)
-              const isSyncing = syncState === 'syncing'
-              const hasRemote = syncState === 'synced'
-              const formattedFolder = researchStorage.formatPersistenceFolder(doc.folder || 'entrevistas')
-              const statusColor = isSyncing ? '#d97706' : hasRemote ? '#0284c7' : '#64748b'
-              const statusIcon = isSyncing ? 'sync' : hasRemote ? 'cloud_done' : 'computer'
-              const statusLabel = isSyncing ? 'Sincronizando...' : hasRemote ? 'Sincronizado' : 'Local'
-              const actionLabel = isSyncing
-                ? 'Sincronizando...'
-                : !isAuthenticated
-                  ? 'Requer Login'
-                  : rawProvider === 'local'
-                    ? 'Modo Local'
-                    : hasRemote
-                      ? 'Re-sincronizar'
-                      : 'Sincronizar na Nuvem'
-              return html`
-                <tr>
-                  <td><strong>${doc.title}</strong></td>
-                  <td><code>${doc.extension || doc.type}</code></td>
-                  <td>${doc.participant || 'N/A'} (<code>${formattedFolder}</code>)</td>
-                  <td>
-                    <span style="display: inline-flex; align-items: center; gap: 4px; font-weight: 500; color: ${statusColor};">
-                      <md-icon style="font-size: 16px;">${statusIcon}</md-icon>
-                      ${statusLabel}
-                    </span>
-                  </td>
-                  <td>
-                    <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-                      ${hasLocal
-                        ? html`
-                            <button
-                              type="button"
-                              class="btn-local-file"
-                              @click=${() => void researchStorage.openLocalDocument(doc)}
-                            >
-                              <md-icon style="font-size: 14px;">folder_open</md-icon>
-                              Abrir do Dispositivo
-                            </button>
-                          `
-                        : ''}
-                      ${hasDocs
-                        ? html`
-                            <a class="btn-external-link" href=${doc.externalViewerUrl} target="_blank" rel="noopener noreferrer">
-                              <md-icon style="font-size: 14px;">open_in_new</md-icon>
-                              ${doc.externalViewerLabel || 'Abrir na Nuvem ↗'}
-                            </a>
-                          `
-                        : ''}
-                      <md-outlined-button
-                        style="font-size: 0.78rem; --md-outlined-button-container-height: 30px; padding: 0 8px;"
-                        ?disabled=${!isAuthenticated || rawProvider === 'local' || isSyncing}
-                        @click=${() => this._syncDocViaController(doc)}
-                      >
-                        <md-icon slot="icon" style="font-size: 15px;">${isSyncing ? 'sync' : 'cloud_upload'}</md-icon>
-                        ${actionLabel}
-                      </md-outlined-button>
-                    </div>
-                  </td>
-                </tr>
-              `
-            })}
-          </tbody>
-        </table>
       </div>
     `
   }
