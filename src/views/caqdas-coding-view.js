@@ -836,10 +836,25 @@ export class CaqdasCodingView extends LitElement {
       rects: rects ?? null
     }
     this.selectedText = text
-    if (this._reader) this._reader.pendingRange = { start, end }
     const markBar = this.shadowRoot?.querySelector('fzl-reader-mark-bar')
     if (markBar) {
       markBar.showAt(rect, text)
+    }
+  }
+
+  _handleExcerptInputFocus() {
+    if (
+      this._reader &&
+      this._reader.viewMode !== 'pdf' &&
+      this.selectionAnchor &&
+      Number.isFinite(this.selectionAnchor.start) &&
+      Number.isFinite(this.selectionAnchor.end) &&
+      this.selectionAnchor.end > this.selectionAnchor.start
+    ) {
+      this._reader.pendingRange = {
+        start: this.selectionAnchor.start,
+        end: this.selectionAnchor.end
+      }
     }
   }
 
@@ -1228,6 +1243,7 @@ export class CaqdasCodingView extends LitElement {
                         placeholder="Título do trecho…"
                         aria-label="Título do trecho selecionado"
                         .value=${this.excerptTitle}
+                        @focus=${this._handleExcerptInputFocus}
                         @input=${(e) => {
                           this.excerptTitle = e.target.value
                         }}
