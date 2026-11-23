@@ -939,6 +939,11 @@ export class CaqdasCodingView extends LitElement {
     return readerPlainText(blocks)
   }
 
+  /** Verifica se um trecho possui âncora visual válida em coordenadas do PDF. */
+  _hasPdfAnchor(q) {
+    return Array.isArray(q?.rects) && q.rects.length > 0 && typeof q?.page === 'number' && q.page > 0
+  }
+
   /** Reancora cada trecho no texto atual (posição, ou citação + contexto se o texto mudou). */
   _anchoredExcerpts(doc, excerpts, codeMap) {
     const plain = this._plainTextOf(doc)
@@ -994,6 +999,11 @@ export class CaqdasCodingView extends LitElement {
     await this.updateComplete
     const shown = await reader.scrollToAnnotation?.(quote.id)
     if (!shown) {
+      if (this._hasPdfAnchor(quote) && this.pdfFile && reader.viewMode !== 'pdf') {
+        reader.viewMode = 'pdf'
+        await reader.updateComplete
+        if (await reader.scrollToAnnotation?.(quote.id)) return
+      }
       if (typeof quote.page === 'number' && reader.viewMode === 'pdf') {
         reader.scrollToPage?.(quote.page)
       } else {
@@ -1052,6 +1062,19 @@ export class CaqdasCodingView extends LitElement {
             </div>
           ` : excerpts.map(q => {
             const code = q.codeId ? codeMap.get(q.codeId) || { name: 'Código removido', color: '#999' } : null
+            const pos = posById.get(q.id)
+            const dateLabel =
+              new Date(q.createdAt).getTime() > 0 ? new Date(q.createdAt).toLocaleString('pt-BR') : ''
+            const metaParts = []
+            if (q.page) {
+              metaParts.push(`p. ${q.page}${q.endPage && q.endPage !== q.page ? `–${q.endPage}` : ''}`)
+            }
+            if (pos) {
+              metaParts.push(`posição ${pos.start}–${pos.end}`)
+            }
+            if (dateLabel) {
+              metaParts.push(dateLabel)
+            }
             return html`
               <div
                 class="quote-list-item ${this.activeExcerptId === q.id ? 'active' : ''}"
@@ -1076,10 +1099,10 @@ export class CaqdasCodingView extends LitElement {
                 <span class="quote-text">“${q.text}”</span>
                 <div class="excerpt-meta">
                   ${orphanIds.has(q.id)
-                    ? html`<strong style="color: #b45309;">não encontrado no texto atual</strong> · `
-                    : html`${q.page ? `p. ${q.page}${q.endPage && q.endPage !== q.page ? `–${q.endPage}` : ''} · ` : ''}posição ${posById.get(q.id).start}–${posById.get(q.id).end} · `}${new Date(q.createdAt).getTime() > 0
-                    ? new Date(q.createdAt).toLocaleString('pt-BR')
-                    : ''}
+                    ? html`<strong style="color: #b45309;">não encontrado no texto atual</strong>${dateLabel
+                        ? ` · ${dateLabel}`
+                        : ''}`
+                    : metaParts.join(' · ')}
                 </div>
                 <div class="quote-footer">
                   ${code
@@ -1136,7 +1159,7 @@ export class CaqdasCodingView extends LitElement {
     const excerpts = doc ? researchStorage.getDocumentExcerpts(doc.id) : []
     const anchored = this._anchoredExcerpts(doc, excerpts, codeMap)
     const annotations = anchored
-      .filter((a) => a.pos || (Array.isArray(a.q.rects) && a.q.rects.length > 0))
+      .filter((a) => a.pos || this._hasPdfAnchor(a.q))
       .map((a) => ({
         id: a.q.id,
         start: a.pos?.start ?? 0,
@@ -1146,7 +1169,7 @@ export class CaqdasCodingView extends LitElement {
         page: a.q.page ?? a.pos?.page,
         rects: a.q.rects
       }))
-    const orphanIds = new Set(anchored.filter((a) => !a.pos).map((a) => a.q.id))
+    const orphanIds = new Set(anchored.filter((a) => !a.pos && !this._hasPdfAnchor(a.q)).map((a) => a.q.id))
     const posById = new Map(anchored.map((a) => [a.q.id, a.pos]))
     const blocks = Array.isArray(doc?.docxBlocks) && doc.docxBlocks.length ? doc.docxBlocks : null
     const wordCount = this.readerController.document?.wordCount || doc?.content?.split(/\s+/).filter(Boolean).length || 0
