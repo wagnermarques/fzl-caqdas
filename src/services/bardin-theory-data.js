@@ -232,8 +232,64 @@ export const BARDIN_THEORY_FRAMEWORK = {
       bardinConcept: 'Inferência & Auditoria (Mozzato & Grzybovski, 2011)',
       softwareRequirement:
         'Memos analíticos ligados aos polos da inferência e histórico cronológico de decisões metodológicas.'
+    },
+    {
+      bardinConcept: 'Análise Temática & Análise das Relações (Coocorrências / Redes)',
+      softwareRequirement:
+        'Visualização de todas as marcações em grafo interativo, agrupando núcleos de sentido e explicitando associações, convergências, contrastes e relações causais/hierárquicas.'
     }
-  ]
+  ],
+  thematicRelationsGuide: {
+    id: 'analise-tematica-relacoes',
+    title: 'Análise Temática, Categorização e Análise das Relações (Grafo de Marcações)',
+    subtitle:
+      'Referencial específico para o agrupamento de trechos em núcleos de sentido e a modelagem de redes semânticas de inter-relação no Polo 2 (Exploração) e Polo 3 (Inferência).',
+    citation:
+      'BARDIN, Laurence. Análise de conteúdo. São Paulo: Edições 70, 2011. (Análise temática/núcleos de sentido, p. 135; Categorização por inventário e classificação, p. 147–153; Análise categorial temática e Análise das relações/coocorrências, p. 199–201 e 255–265). Ver também: VITALI et al. (2019); SILVA; FOSSÁ (2015); MOZZATO; GRZYBOVSKI (2011).',
+    pillars: [
+      {
+        title: '1. Núcleos de Sentido (Unidade de Registro Temática)',
+        detail:
+          'Na Análise Temática de Bardin (2011, p. 135), o tema é a unidade de significação que se liberta naturalmente do texto analisado segundo critérios ligados à teoria. Cada marcação destacada nos documentos corresponde a um núcleo de sentido passível de comparação transversal no corpus.'
+      },
+      {
+        title: '2. Categorização: Inventário e Classificação',
+        detail:
+          'A categorização comporta duas etapas operacionais complementares (BARDIN, 2011, p. 148): o inventário (isolar os elementos/trechos recortados) e a classificação (repartir esses elementos e procurar ou impor certa organização às mensagens por reagrupamento analógico).'
+      },
+      {
+        title: '3. Análise das Relações & Coocorrências em Rede',
+        detail:
+          'Para além da frequência isolada de cada código, a Análise das Relações (BARDIN, 2011, p. 255–265) examina associações, convergências, oposições e condicionamentos entre unidades de registro. Em softwares CAQDAS (como ilustrado por Vitali et al., 2019), explicitar essas ligações em grafo sustenta a passagem da descrição para a inferência científica.'
+      }
+    ],
+    relationLegend: [
+      {
+        relation: 'associa-se / coocorre',
+        meaning: 'Presença conjunta recorrente ou vínculo contextual entre dois núcleos de sentido (coocorrência).'
+      },
+      {
+        relation: 'converge / reforça',
+        meaning: 'Trechos de mesmo participante ou participantes distintos que apontam para uma mesma categoria.'
+      },
+      {
+        relation: 'fundamenta / explica',
+        meaning: 'Marcação empírica que sustenta teoricamente ou esclarece o sentido de outro trecho.'
+      },
+      {
+        relation: 'influencia / condiciona',
+        meaning: 'Indício de condição de produção, antecedente institucional/social ou efeito inferido no discurso.'
+      },
+      {
+        relation: 'contrasta / tenciona',
+        meaning: 'Contradição, divergência ou distinção útil para delimitar categorias (regra de exclusão mútua).'
+      },
+      {
+        relation: 'subtema de / compõe',
+        meaning: 'Organização hierárquica em funil categorial (unidades iniciais agrupadas em subtemas ou categorias finais).'
+      }
+    ]
+  }
 }
 
 export const BARDIN_VIDEO_NOTES = {

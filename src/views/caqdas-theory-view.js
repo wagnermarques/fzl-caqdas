@@ -91,6 +91,13 @@ export class CaqdasTheoryView extends LitElement {
       border-radius: 12px;
       padding: 20px;
       margin-bottom: 16px;
+      scroll-margin-top: 20px;
+    }
+
+    .card.focused-section {
+      border: 2px solid var(--md-sys-color-primary, #006a6a);
+      background: #f6fbfb;
+      box-shadow: 0 4px 18px rgba(0, 106, 106, 0.14);
     }
 
     .quote-classic {
@@ -222,6 +229,7 @@ export class CaqdasTheoryView extends LitElement {
 
   static properties = {
     activeTab: { state: true },
+    highlightedSection: { state: true },
     sources: { state: true },
     notes: { state: true },
     isAddingSource: { state: true },
@@ -243,6 +251,7 @@ export class CaqdasTheoryView extends LitElement {
   constructor() {
     super()
     this.activeTab = 'fases'
+    this.highlightedSection = ''
     this.sources = []
     this.notes = []
     this.isAddingSource = false
@@ -267,12 +276,30 @@ export class CaqdasTheoryView extends LitElement {
     super.connectedCallback()
     this._loadTheoryData()
     this._onTheoryChanged = () => this._loadTheoryData()
+    this._onHashChange = () => this._syncFromHash()
     window.addEventListener('caqdas-theory-changed', this._onTheoryChanged)
+    window.addEventListener('hashchange', this._onHashChange)
+    this._syncFromHash()
   }
 
   disconnectedCallback() {
     super.disconnectedCallback()
     window.removeEventListener('caqdas-theory-changed', this._onTheoryChanged)
+    window.removeEventListener('hashchange', this._onHashChange)
+  }
+
+  _syncFromHash() {
+    const hash = window.location.hash || ''
+    const qIndex = hash.indexOf('?')
+    const params = qIndex >= 0 ? new URLSearchParams(hash.slice(qIndex + 1)) : null
+    const secao = params?.get('secao') || ''
+    if (!secao) return
+    this.activeTab = 'fases'
+    this.highlightedSection = secao
+    void this.updateComplete.then(() => {
+      const target = this.shadowRoot?.getElementById(secao)
+      target?.scrollIntoView?.({ behavior: 'smooth', block: 'start' })
+    })
   }
 
   _loadTheoryData() {
@@ -400,6 +427,64 @@ export class CaqdasTheoryView extends LitElement {
           </div>
         </div>
       `)}
+
+      ${(() => {
+        const g = fw.thematicRelationsGuide
+        if (!g) return ''
+        const isFocused = this.highlightedSection === g.id
+        return html`
+          <div id=${g.id} class="card ${isFocused ? 'focused-section' : ''}">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 10px; margin-bottom: 10px;">
+              <div>
+                <h2 style="margin: 0 0 4px 0; color: var(--md-sys-color-primary, #006a6a);">
+                  ${g.title}
+                </h2>
+                <p style="margin: 0; color: #444;">${g.subtitle}</p>
+              </div>
+              <a class="ext-link" href="#/grafo-marcacoes" style="white-space: nowrap;">
+                Ir para o Grafo de Marcações →
+              </a>
+            </div>
+
+            <div class="abnt-box">
+              <strong>Referência Metodológica Específica:</strong> ${g.citation}
+            </div>
+
+            <div class="grid-2" style="margin-top: 14px;">
+              ${g.pillars.map(
+                (p) => html`
+                  <div class="rule-item" style="background: #f4f9f9; border-color: #d6e9e8;">
+                    <strong style="color: #005b5b;">${p.title}</strong>
+                    <div style="font-size: 0.9rem; color: #333; margin-top: 4px; line-height: 1.55;">
+                      ${p.detail}
+                    </div>
+                  </div>
+                `
+              )}
+            </div>
+
+            <h4 style="margin: 16px 0 8px 0;">Como interpretar as ligações do Grafo segundo Bardin</h4>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 30%;">Tipo de ligação no Grafo</th>
+                  <th>Sentido metodológico na Análise Temática / das Relações</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${g.relationLegend.map(
+                  (row) => html`
+                    <tr>
+                      <td><strong>${row.relation}</strong></td>
+                      <td>${row.meaning}</td>
+                    </tr>
+                  `
+                )}
+              </tbody>
+            </table>
+          </div>
+        `
+      })()}
     `
   }
 

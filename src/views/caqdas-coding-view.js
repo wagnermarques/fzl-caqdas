@@ -4,6 +4,7 @@ import { researchStorage, getPersistenceProviderLabel } from '../services/storag
 import { userData } from '../services/user-data-service.js'
 import { takeReadingRequest } from '../services/reading-intent.js'
 import { extractPdfText, pdfDocumentFields, loadPdfjs } from '../services/pdf-text.js'
+import { isGithubConfigured, syncWithGithub, getGithubConfig } from '../services/github-sync-service.js'
 import { CaqdasDocxCodingController, CaqdasPersonalCloudDocsController } from '../controllers/caqdas-controllers.js'
 import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
@@ -212,6 +213,74 @@ export class CaqdasCodingView extends LitElement {
 
     .tool-btn md-icon {
       font-size: 16px;
+    }
+
+    .sync-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      height: 24px;
+      padding: 0 8px;
+      border-radius: 999px;
+      font-size: 0.74rem;
+      font-weight: 600;
+      text-decoration: none;
+      white-space: nowrap;
+      border: 1px solid transparent;
+    }
+
+    .sync-pill.ok {
+      background: #ecfdf5;
+      color: #065f46;
+      border-color: #a7f3d0;
+    }
+
+    .sync-pill.error {
+      background: #fef2f2;
+      color: #991b1b;
+      border-color: #fecaca;
+    }
+
+    .aside-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .aside-actions {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      flex-wrap: wrap;
+    }
+
+    .sync-status-banner {
+      padding: 7px 9px;
+      border-radius: 6px;
+      font-size: 0.78rem;
+      line-height: 1.4;
+      border: 1px solid #e2e8f0;
+      background: #f8fafc;
+      overflow-wrap: anywhere;
+    }
+
+    .sync-status-banner.ok {
+      background: #f0fdf4;
+      border-color: #bbf7d0;
+      color: #166534;
+    }
+
+    .sync-status-banner.error {
+      background: #fef2f2;
+      border-color: #fecaca;
+      color: #991b1b;
+    }
+
+    .sync-status-banner a {
+      color: #0969da;
+      font-weight: 600;
     }
 
     .selection-bar {
@@ -465,7 +534,10 @@ export class CaqdasCodingView extends LitElement {
     readerPrefs: { state: true },
     pdfStatus: { state: true },
     pdfFile: { state: true },
-    pdfjs: { state: true }
+    pdfjs: { state: true },
+    githubSyncBusy: { state: true },
+    githubSyncStatus: { state: true },
+    _githubConfigured: { state: true }
   }
 
   constructor() {
@@ -485,6 +557,9 @@ export class CaqdasCodingView extends LitElement {
     this.pdfStatus = null
     this.pdfFile = null
     this.pdfjs = null
+    this.githubSyncBusy = false
+    this.githubSyncStatus = null
+    this._githubConfigured = isGithubConfigured()
     this.readerController = new CaqdasDocxCodingController(this, { fontSize: 16 })
     this.cloudController = new CaqdasPersonalCloudDocsController(this)
   }
@@ -494,6 +569,7 @@ export class CaqdasCodingView extends LitElement {
     this._loadData()
     this.currentUser = authService.getCurrentUser?.() || null
     this.cloudConfig = researchStorage.getCloudSyncConfig()
+    this._githubConfigured = isGithubConfigured()
     this._unsubscribeAuth = authService.subscribe((user, reason) => {
       if (reason === 'socialAuthConfig') return
       this.currentUser = user || null
@@ -501,16 +577,22 @@ export class CaqdasCodingView extends LitElement {
       this.updateComplete.then(() => this._syncPersistenceChips())
     })
     this._onDataChanged = () => this._loadData()
+    this._onGithubChanged = () => {
+      this._githubConfigured = isGithubConfigured()
+    }
     this._onCloudChanged = (e) => {
       this.cloudConfig = e.detail || researchStorage.getCloudSyncConfig()
       this.requestUpdate()
       this.updateComplete.then(() => this._syncPersistenceChips())
     }
     window.addEventListener('caqdas-data-changed', this._onDataChanged)
+    window.addEventListener('caqdas-github-changed', this._onGithubChanged)
     window.addEventListener('caqdas-cloud-sync-changed', this._onCloudChanged)
     // Preferências de leitura são do usuário: recarrega ao trocar de conta.
     this._unsubscribeUserData = userData.subscribe(() => {
       this.readerPrefs = this._loadReaderPrefs()
+      this._githubConfigured = isGithubConfigured()
+      this.githubSyncStatus = null
     })
     this._onReadingRequest = () => this._applyReadingRequest()
     window.addEventListener('caqdas-reading-request', this._onReadingRequest)
@@ -535,6 +617,7 @@ export class CaqdasCodingView extends LitElement {
     this._unsubscribeAuth?.()
     this._unsubscribeUserData?.()
     window.removeEventListener('caqdas-data-changed', this._onDataChanged)
+    window.removeEventListener('caqdas-github-changed', this._onGithubChanged)
     window.removeEventListener('caqdas-cloud-sync-changed', this._onCloudChanged)
     window.removeEventListener('caqdas-reading-request', this._onReadingRequest)
   }
@@ -1054,6 +1137,61 @@ export class CaqdasCodingView extends LitElement {
     }
   }
 
+  async _handleGithubSave() {
+    if (this.githubSyncBusy) return
+    if (!isGithubConfigured()) {
+      const goConfig = confirm(
+        'O repositório remoto privado do GitHub ainda não está configurado.\n\nDeseja ir para Persistência & Sincronização para configurar agora?'
+      )
+      if (goConfig) {
+        if (this._reader?.fullscreen) {
+          await this._reader.exitFullscreen?.()
+        }
+        window.location.hash = '#/config/persistencia'
+      }
+      return
+    }
+    this.githubSyncBusy = true
+    this.githubSyncStatus = null
+    try {
+      const user = authService.getCurrentUser?.()
+      const r = await syncWithGithub(user ? { name: user.name || '' } : null)
+      const relInfo = r.relationCount ? ` e ${r.relationCount} relação(ões)` : ''
+      const merged = [
+        r.added && `${r.added} trecho(s) novo(s) do GitHub`,
+        r.updated && `${r.updated} trecho(s) atualizado(s)`,
+        r.removed && `${r.removed} removido(s)`,
+        r.graphAdded && `${r.graphAdded} relação(ões) nova(s)`,
+        r.graphUpdated && `${r.graphUpdated} relação(ões) atualizada(s)`
+      ].filter(Boolean)
+      this.githubSyncStatus = {
+        kind: 'ok',
+        short: r.pushed ? 'Salvo' : 'Em dia',
+        text:
+          (r.pushed
+            ? `Commit e push realizados (${r.pushed} arquivo(s) em ${r.folder}/: ${r.excerptCount} trecho(s)${relInfo}).`
+            : `Já sincronizado com ${r.folder}/ (sem alterações pendentes).`) +
+          (merged.length ? ` Mesclado: ${merged.join(', ')}.` : ''),
+        link: r.pushed ? r.lastCommitUrl : ''
+      }
+    } catch (err) {
+      const msg = err?.message || String(err)
+      this.githubSyncStatus = { kind: 'error', text: msg }
+      if (this._reader?.fullscreen && !this._reader?.asideOpen) {
+        alert(`Erro ao salvar no GitHub: ${msg}`)
+      }
+    } finally {
+      this.githubSyncBusy = false
+    }
+  }
+
+  async _openExcerptsGraph() {
+    if (this._reader?.fullscreen) {
+      await this._reader.exitFullscreen?.()
+    }
+    window.location.hash = '#/grafo-marcacoes'
+  }
+
   /** Lista de trechos (usada na lateral da página e no painel do leitor em tela cheia). */
   _renderExcerptList(excerpts, codeMap, orphanIds, posById) {
     return excerpts.length === 0 ? html`
@@ -1173,6 +1311,11 @@ export class CaqdasCodingView extends LitElement {
     const posById = new Map(anchored.map((a) => [a.q.id, a.pos]))
     const blocks = Array.isArray(doc?.docxBlocks) && doc.docxBlocks.length ? doc.docxBlocks : null
     const wordCount = this.readerController.document?.wordCount || doc?.content?.split(/\s+/).filter(Boolean).length || 0
+    const totalExcerpts = this.documents.reduce(
+      (acc, d) => acc + (Array.isArray(d?.quotations) ? d.quotations.length : 0),
+      0
+    )
+    const githubCfg = getGithubConfig()
 
     return html`
       <div>
@@ -1249,7 +1392,40 @@ export class CaqdasCodingView extends LitElement {
             >
               ${this._renderPdfStatus(doc)}
               <div slot="aside" class="aside-list">
-                <h3 class="aside-title">Trechos (${excerpts.length})</h3>
+                <div class="aside-header">
+                  <h3 class="aside-title">Trechos (${excerpts.length})</h3>
+                  <div class="aside-actions">
+                    <button
+                      type="button"
+                      class="tool-btn primary"
+                      ?disabled=${this.githubSyncBusy}
+                      title=${this._githubConfigured
+                        ? `Commit & push JSON para ${githubCfg.repo}`
+                        : 'Configurar e salvar no GitHub privado'}
+                      @click=${this._handleGithubSave}
+                    >
+                      <md-icon>${this.githubSyncBusy ? 'sync' : 'cloud_upload'}</md-icon>
+                      ${this.githubSyncBusy ? 'Salvando…' : 'Salvar'}
+                    </button>
+                    <button
+                      type="button"
+                      class="tool-btn"
+                      title="Ver todas as marcações e ajustar o grafo de inter-relações (Bardin)"
+                      @click=${this._openExcerptsGraph}
+                    >
+                      <md-icon>hub</md-icon>
+                      Grafo (${totalExcerpts})
+                    </button>
+                  </div>
+                </div>
+                ${this.githubSyncStatus
+                  ? html`<div class="sync-status-banner ${this.githubSyncStatus.kind}" role="status">
+                      ${this.githubSyncStatus.text}
+                      ${this.githubSyncStatus.link
+                        ? html` <a href=${this.githubSyncStatus.link} target="_blank" rel="noopener noreferrer">Ver commit ↗</a>`
+                        : ''}
+                    </div>`
+                  : ''}
                 ${this._renderExcerptList(excerpts, codeMap, orphanIds, posById)}
               </div>
               ${html`
@@ -1299,6 +1475,55 @@ export class CaqdasCodingView extends LitElement {
                     </form>
                   `}
               ${html`
+                    <button
+                      slot="actions"
+                      type="button"
+                      class="tool-btn primary"
+                      ?disabled=${this.githubSyncBusy}
+                      title=${this._githubConfigured
+                        ? `Fazer commit e push do JSON (trechos e grafo) para ${githubCfg.repo}`
+                        : 'Configurar repositório privado e salvar no GitHub'}
+                      @click=${this._handleGithubSave}
+                    >
+                      <md-icon>${this.githubSyncBusy ? 'sync' : 'cloud_upload'}</md-icon>
+                      <span>${this.githubSyncBusy ? 'Salvando…' : 'Salvar'}</span>
+                    </button>
+                    ${this.githubSyncStatus
+                      ? this.githubSyncStatus.link
+                        ? html`
+                            <a
+                              slot="actions"
+                              class="sync-pill ok"
+                              href=${this.githubSyncStatus.link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title=${this.githubSyncStatus.text}
+                            >
+                              ✓ Salvo ↗
+                            </a>
+                          `
+                        : html`
+                            <span
+                              slot="actions"
+                              class="sync-pill ${this.githubSyncStatus.kind}"
+                              title=${this.githubSyncStatus.text}
+                            >
+                              ${this.githubSyncStatus.kind === 'error'
+                                ? '⚠ Erro'
+                                : `✓ ${this.githubSyncStatus.short || 'Em dia'}`}
+                            </span>
+                          `
+                      : ''}
+                    <button
+                      slot="actions"
+                      type="button"
+                      class="tool-btn"
+                      title="Ver todas as marcações e ajustar o grafo de inter-relações (Análise Temática de Bardin)"
+                      @click=${this._openExcerptsGraph}
+                    >
+                      <md-icon>hub</md-icon>
+                      <span>Grafo (${totalExcerpts})</span>
+                    </button>
                     ${doc && researchStorage.hasLocalDocument(doc)
                       ? html`
                           <button
@@ -1359,6 +1584,14 @@ export class CaqdasCodingView extends LitElement {
             Trechos deste documento (${excerpts.length})
           </h3>
           <div class="sidebar-actions">
+            <button
+              type="button"
+              class="tool-btn"
+              title="Ver todas as marcações do corpus e ajustar o grafo de inter-relações"
+              @click=${this._openExcerptsGraph}
+            >
+              <md-icon>hub</md-icon>Todas &amp; Grafo (${totalExcerpts})
+            </button>
             <button type="button" class="tool-btn" @click=${this._exportExcerpts} title="Baixar todos os trechos do projeto em JSON">
               <md-icon>download</md-icon>Exportar JSON
             </button>

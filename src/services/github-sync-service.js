@@ -8,16 +8,17 @@
  *     projeto.json     ← nome, descrição e quem gravou
  *     documentos.json  ← materiais do corpus e onde estão na nuvem
  *     trechos.json     ← trechos (schema caqdas-trechos/v1), com marcas de exclusão
+ *     grafo.json       ← posições de nós e inter-relações temáticas (schema caqdas-grafo/v1)
  *
  * O acesso é por token pessoal fine-grained (Contents: read/write só nesse repositório),
  * digitado pelo próprio usuário e guardado no escopo dele no navegador (FzlUserDataController):
  * outro usuário do mesmo navegador não o vê, e o logout apaga.
  *
- * "Sincronizar" = baixa trechos.json → mescla (o mais recente vence; exclusões propagam) →
- * envia os três arquivos. Arquivos sem mudança não geram commit.
+ * "Sincronizar" = baixa trechos.json e grafo.json → mescla (o mais recente vence; exclusões propagam) →
+ * envia os quatro arquivos. Arquivos sem mudança não geram commit.
  */
 import { userData } from './user-data-service.js'
-import { researchStorage, EXCERPT_SCHEMA } from './storage-service.js'
+import { researchStorage, EXCERPT_SCHEMA, GRAPH_SCHEMA } from './storage-service.js'
 
 const CONFIG_KEY = 'github_sync_v1'
 const API = 'https://api.github.com'
@@ -175,6 +176,7 @@ function buildFiles(author) {
   const now = new Date().toISOString()
   const savedBy = author ? { name: author.name || '', app: 'caqdas' } : { app: 'caqdas' }
   const excerpts = researchStorage.exportExcerpts()
+  const grafo = researchStorage.exportExcerptGraph()
   const documents = researchStorage.getDocuments().map((d) => ({
     id: d.id,
     title: d.title || '',
@@ -204,29 +206,60 @@ function buildFiles(author) {
         description: project.description || '',
         createdDate: project.createdDate || ''
       },
-      files: { documentos: 'documentos.json', trechos: 'trechos.json' }
+      files: { documentos: 'documentos.json', trechos: 'trechos.json', grafo: 'grafo.json' }
     },
     documentos: { schema: DOCUMENTS_SCHEMA, savedAt: now, documents },
-    trechos: { ...excerpts, savedBy }
+    trechos: { ...excerpts, savedBy },
+    grafo: { ...grafo, savedBy }
   }
 }
 
 /**
- * Baixa e mescla os trechos do GitHub (sem enviar nada).
- * @returns {{ found: boolean, added: number, updated: number, removed: number, skipped: number }}
+ * Baixa e mescla os trechos e o grafo do GitHub (sem enviar nada).
+ * @returns {{ found: boolean, added: number, updated: number, removed: number, skipped: number, graphAdded: number, graphUpdated: number, graphRemoved: number }}
  */
 export async function pullFromGithub() {
   const cfg = getGithubConfig()
   if (!isGithubConfigured(cfg)) throw new GithubError('Configure o GitHub em Persistência antes de sincronizar.')
-  const path = `${projectFolder(researchStorage.getProject())}/trechos.json`
-  const remote = await readJson(cfg, path)
-  if (!remote.json) return { found: false, added: 0, updated: 0, removed: 0, skipped: 0 }
-  if (remote.json.schema !== EXCERPT_SCHEMA) throw new GithubError(`${path} não está no formato ${EXCERPT_SCHEMA}.`)
-  return { found: true, ...researchStorage.importExcerpts(remote.json) }
+  const folder = projectFolder(researchStorage.getProject())
+  const trechosPath = `${folder}/trechos.json`
+  const grafoPath = `${folder}/grafo.json`
+  const [remote, remoteGrafo] = await Promise.all([readJson(cfg, trechosPath), readJson(cfg, grafoPath)])
+  if (!remote.json && !remoteGrafo.json) {
+    return {
+      found: false,
+      added: 0,
+      updated: 0,
+      removed: 0,
+      skipped: 0,
+      graphAdded: 0,
+      graphUpdated: 0,
+      graphRemoved: 0
+    }
+  }
+  let trechosRes = { added: 0, updated: 0, removed: 0, skipped: 0 }
+  if (remote.json) {
+    if (remote.json.schema !== EXCERPT_SCHEMA) throw new GithubError(`${trechosPath} não está no formato ${EXCERPT_SCHEMA}.`)
+    trechosRes = researchStorage.importExcerpts(remote.json)
+  }
+  let graphRes = { added: 0, updated: 0, removed: 0 }
+  if (remoteGrafo.json) {
+    if (remoteGrafo.json.schema && remoteGrafo.json.schema !== GRAPH_SCHEMA) {
+      throw new GithubError(`${grafoPath} não está no formato ${GRAPH_SCHEMA}.`)
+    }
+    graphRes = researchStorage.importExcerptGraph(remoteGrafo.json)
+  }
+  return {
+    found: true,
+    ...trechosRes,
+    graphAdded: graphRes.added,
+    graphUpdated: graphRes.updated,
+    graphRemoved: graphRes.removed
+  }
 }
 
 /**
- * Sincroniza: baixa e mescla trechos.json, depois envia projeto/documentos/trechos.
+ * Sincroniza: baixa e mescla trechos.json e grafo.json, depois envia projeto/documentos/trechos/grafo.
  * @param {{ name?: string }} [author] quem está gravando (só o nome; o e-mail não vai para o repositório)
  */
 export async function syncWithGithub(author) {
@@ -236,16 +269,27 @@ export async function syncWithGithub(author) {
   const paths = {
     projeto: `${folder}/projeto.json`,
     documentos: `${folder}/documentos.json`,
-    trechos: `${folder}/trechos.json`
+    trechos: `${folder}/trechos.json`,
+    grafo: `${folder}/grafo.json`
   }
 
-  const remoteTrechos = await readJson(cfg, paths.trechos)
+  const [remoteTrechos, remoteGrafo] = await Promise.all([
+    readJson(cfg, paths.trechos),
+    readJson(cfg, paths.grafo)
+  ])
   let merged = { added: 0, updated: 0, removed: 0, skipped: 0 }
   if (remoteTrechos.json) {
     if (remoteTrechos.json.schema !== EXCERPT_SCHEMA) {
       throw new GithubError(`${paths.trechos} não está no formato ${EXCERPT_SCHEMA}.`)
     }
     merged = researchStorage.importExcerpts(remoteTrechos.json)
+  }
+  let graphMerged = { added: 0, updated: 0, removed: 0 }
+  if (remoteGrafo.json) {
+    if (remoteGrafo.json.schema && remoteGrafo.json.schema !== GRAPH_SCHEMA) {
+      throw new GithubError(`${paths.grafo} não está no formato ${GRAPH_SCHEMA}.`)
+    }
+    graphMerged = researchStorage.importExcerptGraph(remoteGrafo.json)
   }
 
   const files = buildFiles(author)
@@ -256,7 +300,8 @@ export async function syncWithGithub(author) {
   for (const [key, previous] of [
     ['projeto', remoteProjeto],
     ['documentos', remoteDocs],
-    ['trechos', remoteTrechos]
+    ['trechos', remoteTrechos],
+    ['grafo', remoteGrafo]
   ]) {
     const url = await writeJson(cfg, paths[key], files[key], previous, `caqdas: atualiza ${key}.json de "${name}"`)
     if (url !== null) commits.push(url)
@@ -264,5 +309,15 @@ export async function syncWithGithub(author) {
 
   const lastCommitUrl = commits.filter(Boolean).at(-1) || getGithubConfig().lastCommitUrl
   saveGithubConfig({ lastSyncAt: new Date().toISOString(), lastCommitUrl })
-  return { ...merged, pushed: commits.length, folder, excerptCount: files.trechos.excerpts.length, lastCommitUrl }
+  return {
+    ...merged,
+    graphAdded: graphMerged.added,
+    graphUpdated: graphMerged.updated,
+    graphRemoved: graphMerged.removed,
+    pushed: commits.length,
+    folder,
+    excerptCount: files.trechos.excerpts.length,
+    relationCount: files.grafo.relations.length,
+    lastCommitUrl
+  }
 }

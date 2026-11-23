@@ -276,12 +276,15 @@ export class CaqdasGithubSyncPanel extends LitElement {
       const merged = [
         r.added && `${r.added} trecho(s) novo(s) vindos do GitHub`,
         r.updated && `${r.updated} atualizado(s)`,
-        r.removed && `${r.removed} removido(s) (excluídos em outro aparelho)`
+        r.removed && `${r.removed} removido(s) (excluídos em outro aparelho)`,
+        r.graphAdded && `${r.graphAdded} relação(ões) nova(s) do grafo`,
+        r.graphUpdated && `${r.graphUpdated} relação(ões) atualizada(s)`
       ].filter(Boolean)
+      const relInfo = r.relationCount ? ` e ${r.relationCount} relação(ões)` : ''
       this._status = {
         kind: 'ok',
         text:
-          `${r.excerptCount} trecho(s) em ${r.folder}/. ` +
+          `${r.excerptCount} trecho(s)${relInfo} em ${r.folder}/. ` +
           (r.pushed ? `${r.pushed} arquivo(s) atualizado(s) no GitHub.` : 'Nada mudou desde a última sincronização.') +
           (merged.length ? ` Mesclado: ${merged.join(', ')}.` : ''),
         link: r.pushed ? r.lastCommitUrl : ''
@@ -344,7 +347,7 @@ export class CaqdasGithubSyncPanel extends LitElement {
       <p>
         Use um <strong>repositório privado seu</strong> (ex.: <code>seu-usuario/caqdas-dados</code>). Os arquivos deste
         projeto ficam em <code>${folder}/</code> (<code>projeto.json</code>, <code>documentos.json</code>,
-        <code>trechos.json</code>). Cada sincronização vira um commit, com histórico.
+        <code>trechos.json</code>, <code>grafo.json</code>). Cada sincronização vira um commit, com histórico.
       </p>
 
       <div class="grid">

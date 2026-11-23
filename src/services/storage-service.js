@@ -1,6 +1,14 @@
 import { INITIAL_RESEARCH_DATA, LEGACY_SAMPLE_DOCUMENTS } from './sample-data.js'
 import { BARDIN_OPEN_ACCESS_SOURCES, INITIAL_STUDY_NOTES } from './bardin-theory-data.js'
 import { userData, corpusFiles } from './user-data-service.js'
+import {
+  GRAPH_SCHEMA,
+  normalizeRelation,
+  normalizeExcerptGraph,
+  mergeExcerptGraphs
+} from './excerpt-graph-utils.js'
+
+export { GRAPH_SCHEMA }
 
 // Pesquisa e estudo teórico ficam no escopo do usuário (userData.getItem/setItem).
 const STORAGE_KEY = 'research_data_v1'
@@ -40,12 +48,16 @@ const DEFAULT_CLOUD_CONFIG = {
 // --- Modelo do trecho selecionado ---------------------------------------------------
 export const EXCERPT_SCHEMA = 'caqdas-trechos/v1'
 
-function newExcerptId() {
+function newRandomId(prefix) {
   const rand =
     typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
       : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`
-  return `quote-${rand}`
+  return `${prefix}-${rand}`
+}
+
+function newExcerptId() {
+  return newRandomId('quote')
 }
 
 const toInt = (value) => (Number.isInteger(value) && value >= 0 ? value : null)
@@ -722,7 +734,21 @@ class ResearchStorageService {
     if (!doc || !doc.quotations) return
     doc.quotations = doc.quotations.filter(q => q.id !== quoteId)
     // Marca de exclusão: impede que uma sincronização traga o trecho de volta.
-    this._rememberDeletedExcerpt({ id: quoteId, docId, deletedAt: new Date().toISOString() })
+    const now = new Date().toISOString()
+    this._rememberDeletedExcerpt({ id: quoteId, docId, deletedAt: now })
+    // Limpa nó e relações associadas a este trecho no grafo
+    const graph = normalizeExcerptGraph(this._data.excerptGraph)
+    if (graph.nodes[quoteId]) delete graph.nodes[quoteId]
+    const remainingRelations = []
+    for (const rel of graph.relations) {
+      if (rel.sourceId === quoteId || rel.targetId === quoteId) {
+        graph.deletedRelations.push({ id: rel.id, deletedAt: now })
+      } else {
+        remainingRelations.push(rel)
+      }
+    }
+    graph.relations = remainingRelations
+    this._data.excerptGraph = graph
     this._saveData(this._data)
   }
 
@@ -763,6 +789,7 @@ class ResearchStorageService {
     const usedDocs = new Set(excerpts.map((e) => e.docId))
     const usedCodes = new Set(excerpts.map((e) => e.codeId).filter(Boolean))
     const project = this.getProject() || {}
+    const graph = this.getExcerptGraph()
     return {
       schema: EXCERPT_SCHEMA,
       exportedAt: new Date().toISOString(),
@@ -789,7 +816,12 @@ class ResearchStorageService {
         .filter((c) => usedCodes.has(c.id))
         .map((c) => ({ id: c.id, name: c.name, color: c.color, categoryId: c.categoryId || null })),
       excerpts,
-      deleted: this.getDeletedExcerpts()
+      deleted: this.getDeletedExcerpts(),
+      graph: {
+        nodes: graph.nodes,
+        relations: graph.relations,
+        deleted: graph.deletedRelations
+      }
     }
   }
 
@@ -848,8 +880,141 @@ class ResearchStorageService {
       result.removed += doc.quotations.length - kept.length
       doc.quotations = kept
     }
-    if (result.added || result.updated || result.removed || tombstonesChanged) this._saveData(this._data)
+    let graphChanged = false
+    if (payload.graph && typeof payload.graph === 'object') {
+      const mergedGraph = mergeExcerptGraphs(this._data.excerptGraph, payload.graph)
+      if (mergedGraph.changed) {
+        this._data.excerptGraph = mergedGraph.graph
+        graphChanged = true
+      }
+    }
+    if (result.added || result.updated || result.removed || tombstonesChanged || graphChanged) {
+      this._saveData(this._data)
+    }
     return result
+  }
+
+  // --- Grafo de inter-relações entre marcações --------------------------------------
+
+  getExcerptGraph() {
+    return normalizeExcerptGraph(this._data.excerptGraph)
+  }
+
+  saveExcerptNodePosition(excerptId, x, y) {
+    if (!excerptId || !Number.isFinite(Number(x)) || !Number.isFinite(Number(y))) return null
+    const graph = this.getExcerptGraph()
+    const pos = { x: Math.round(Number(x)), y: Math.round(Number(y)), updatedAt: new Date().toISOString() }
+    graph.nodes[excerptId] = pos
+    this._data.excerptGraph = graph
+    this._saveData(this._data)
+    return pos
+  }
+
+  saveExcerptNodePositions(posMap) {
+    if (!posMap || typeof posMap !== 'object') return this.getExcerptGraph()
+    const graph = this.getExcerptGraph()
+    const now = new Date().toISOString()
+    let changed = false
+    for (const [id, rawPos] of Object.entries(posMap)) {
+      if (!id || !rawPos || !Number.isFinite(Number(rawPos.x)) || !Number.isFinite(Number(rawPos.y))) continue
+      graph.nodes[id] = {
+        x: Math.round(Number(rawPos.x)),
+        y: Math.round(Number(rawPos.y)),
+        updatedAt: typeof rawPos.updatedAt === 'string' && rawPos.updatedAt ? rawPos.updatedAt : now
+      }
+      changed = true
+    }
+    if (changed) {
+      this._data.excerptGraph = graph
+      this._saveData(this._data)
+    }
+    return graph
+  }
+
+  addExcerptRelation({ sourceId, targetId, type = 'associa', label, directed, note = '' }) {
+    const now = new Date().toISOString()
+    const rel = normalizeRelation({
+      id: newRandomId('rel'),
+      sourceId,
+      targetId,
+      type,
+      label,
+      directed,
+      note,
+      createdAt: now,
+      updatedAt: now
+    })
+    if (!rel) return null
+    const graph = this.getExcerptGraph()
+    graph.relations.push(rel)
+    this._data.excerptGraph = graph
+    this._saveData(this._data)
+    return rel
+  }
+
+  updateExcerptRelation(relId, updates) {
+    const graph = this.getExcerptGraph()
+    const index = graph.relations.findIndex((r) => r.id === relId)
+    if (index < 0) return null
+    const current = graph.relations[index]
+    const next = normalizeRelation({
+      ...current,
+      ...updates,
+      id: current.id,
+      createdAt: current.createdAt,
+      updatedAt: new Date().toISOString()
+    })
+    if (!next) return null
+    graph.relations[index] = next
+    this._data.excerptGraph = graph
+    this._saveData(this._data)
+    return next
+  }
+
+  removeExcerptRelation(relId) {
+    if (!relId) return
+    const graph = this.getExcerptGraph()
+    const before = graph.relations.length
+    graph.relations = graph.relations.filter((r) => r.id !== relId)
+    const now = new Date().toISOString()
+    const prevIdx = graph.deletedRelations.findIndex((m) => m.id === relId)
+    if (prevIdx >= 0) {
+      graph.deletedRelations[prevIdx] = { id: relId, deletedAt: now }
+    } else {
+      graph.deletedRelations.push({ id: relId, deletedAt: now })
+    }
+    if (graph.relations.length !== before || prevIdx < 0) {
+      this._data.excerptGraph = graph
+      this._saveData(this._data)
+    }
+  }
+
+  exportExcerptGraph() {
+    const project = this.getProject() || {}
+    const graph = this.getExcerptGraph()
+    return {
+      schema: GRAPH_SCHEMA,
+      exportedAt: new Date().toISOString(),
+      project: { id: project.id || '', name: project.name || '' },
+      nodes: graph.nodes,
+      relations: graph.relations,
+      deleted: graph.deletedRelations
+    }
+  }
+
+  importExcerptGraph(payload) {
+    if (!payload || typeof payload !== 'object') {
+      throw new Error(`Arquivo de grafo inválido: esperado JSON "${GRAPH_SCHEMA}".`)
+    }
+    if (payload.schema && payload.schema !== GRAPH_SCHEMA) {
+      throw new Error(`Formato de grafo inválido: esperado "${GRAPH_SCHEMA}".`)
+    }
+    const merged = mergeExcerptGraphs(this._data.excerptGraph, payload)
+    if (merged.changed) {
+      this._data.excerptGraph = merged.graph
+      this._saveData(this._data)
+    }
+    return { added: merged.added, updated: merged.updated, removed: merged.removed }
   }
 
   addCode(code) {

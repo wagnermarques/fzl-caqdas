@@ -29,6 +29,7 @@ const hasValidStoredMsId = /^[0-9a-f-]{8,}$/i.test(storedMicrosoftId)
 import './views/caqdas-home-view.js'
 import './views/caqdas-sources-view.js'
 import './views/caqdas-coding-view.js'
+import './views/caqdas-graph-view.js'
 import './views/caqdas-codebook-view.js'
 import './views/caqdas-matrix-view.js'
 import './views/caqdas-memos-view.js'
@@ -93,6 +94,11 @@ createAppShell({
       name: 'codificacao',
       match: pattern('/codificacao'),
       render: () => html`<caqdas-coding-view></caqdas-coding-view>`
+    },
+    {
+      name: 'grafo-marcacoes',
+      match: pattern('/grafo-marcacoes'),
+      render: () => html`<caqdas-graph-view></caqdas-graph-view>`
     },
     {
       name: 'codebook',
@@ -167,6 +173,7 @@ createAppShell({
         label: 'Análise Qualitativa',
         items: [
           { label: 'Área de Codificação', href: '#/codificacao', icon: 'edit_note' },
+          { label: 'Grafo de Marcações', href: '#/grafo-marcacoes', icon: 'hub' },
           { label: 'Livro de Códigos (Codebook)', href: '#/codebook', icon: 'account_tree' },
           { label: 'Matriz Comparativa', href: '#/comparativo', icon: 'compare_arrows' },
           { label: 'Memos & Diário de Bordo', href: '#/memos', icon: 'sticky_note_2' }
