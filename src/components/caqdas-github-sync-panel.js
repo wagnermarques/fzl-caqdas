@@ -296,13 +296,22 @@ export class CaqdasGithubSyncPanel extends LitElement {
     return this._run('pull', async () => {
       if (!this.compact) this._save()
       const r = await pullFromGithub()
+      const parts = [
+        r.docsAdded && `${r.docsAdded} doc(s)`,
+        r.added && `${r.added} trecho(s) novo(s)`,
+        r.updated && `${r.updated} atualizado(s)`,
+        r.removed && `${r.removed} removido(s)`,
+        r.graphAdded && `${r.graphAdded} relação(ões) do grafo`,
+        r.skipped && `${r.skipped} ignorado(s)`
+      ].filter(Boolean)
       this._status = r.found
         ? {
             kind: 'ok',
-            text: `Trazido do GitHub: ${r.added} novo(s), ${r.updated} atualizado(s), ${r.removed} removido(s)` +
-              (r.skipped ? `, ${r.skipped} ignorado(s).` : '.')
+            text: parts.length
+              ? `Trazido do GitHub: ${parts.join(', ')}.`
+              : 'Tudo em dia com o GitHub (nenhuma novidade para baixar).'
           }
-        : { kind: 'info', text: 'Ainda não há trechos deste projeto no GitHub.' }
+        : { kind: 'info', text: 'Ainda não há arquivos deste projeto no GitHub.' }
     })
   }
 

@@ -181,6 +181,8 @@ function buildFiles(author) {
     id: d.id,
     title: d.title || '',
     type: d.type || '',
+    extension: d.extension || '',
+    mimeType: d.mimeType || '',
     participant: d.participant || '',
     folder: d.folder || '',
     excerptCount: (d.quotations || []).length,
@@ -215,19 +217,31 @@ function buildFiles(author) {
 }
 
 /**
- * Baixa e mescla os trechos e o grafo do GitHub (sem enviar nada).
- * @returns {{ found: boolean, added: number, updated: number, removed: number, skipped: number, graphAdded: number, graphUpdated: number, graphRemoved: number }}
+ * Baixa e mescla projeto, documentos, códigos, trechos e o grafo do GitHub (sem enviar nada).
  */
 export async function pullFromGithub() {
   const cfg = getGithubConfig()
   if (!isGithubConfigured(cfg)) throw new GithubError('Configure o GitHub em Persistência antes de sincronizar.')
+  const scopeBefore = userData.scope
   const folder = projectFolder(researchStorage.getProject())
-  const trechosPath = `${folder}/trechos.json`
-  const grafoPath = `${folder}/grafo.json`
-  const [remote, remoteGrafo] = await Promise.all([readJson(cfg, trechosPath), readJson(cfg, grafoPath)])
-  if (!remote.json && !remoteGrafo.json) {
+  const paths = {
+    projeto: `${folder}/projeto.json`,
+    documentos: `${folder}/documentos.json`,
+    trechos: `${folder}/trechos.json`,
+    grafo: `${folder}/grafo.json`
+  }
+  const [remoteProjeto, remoteDocs, remoteTrechos, remoteGrafo] = await Promise.all([
+    readJson(cfg, paths.projeto),
+    readJson(cfg, paths.documentos),
+    readJson(cfg, paths.trechos),
+    readJson(cfg, paths.grafo)
+  ])
+  if (userData.scope !== scopeBefore) {
     return {
       found: false,
+      aborted: true,
+      docsAdded: 0,
+      codesAdded: 0,
       added: 0,
       updated: 0,
       removed: 0,
@@ -237,20 +251,47 @@ export async function pullFromGithub() {
       graphRemoved: 0
     }
   }
-  let trechosRes = { added: 0, updated: 0, removed: 0, skipped: 0 }
-  if (remote.json) {
-    if (remote.json.schema !== EXCERPT_SCHEMA) throw new GithubError(`${trechosPath} não está no formato ${EXCERPT_SCHEMA}.`)
-    trechosRes = researchStorage.importExcerpts(remote.json)
+  if (!remoteProjeto.json && !remoteDocs.json && !remoteTrechos.json && !remoteGrafo.json) {
+    return {
+      found: false,
+      docsAdded: 0,
+      codesAdded: 0,
+      added: 0,
+      updated: 0,
+      removed: 0,
+      skipped: 0,
+      graphAdded: 0,
+      graphUpdated: 0,
+      graphRemoved: 0
+    }
+  }
+  if (remoteTrechos.json && remoteTrechos.json.schema !== EXCERPT_SCHEMA) {
+    throw new GithubError(`${paths.trechos} não está no formato ${EXCERPT_SCHEMA}.`)
+  }
+  if (remoteGrafo.json && remoteGrafo.json.schema && remoteGrafo.json.schema !== GRAPH_SCHEMA) {
+    throw new GithubError(`${paths.grafo} não está no formato ${GRAPH_SCHEMA}.`)
+  }
+
+  if (remoteProjeto.json?.project) {
+    researchStorage.importProjectMeta(remoteProjeto.json.project)
+  }
+  const docsList = [
+    ...(Array.isArray(remoteDocs.json?.documents) ? remoteDocs.json.documents : []),
+    ...(Array.isArray(remoteTrechos.json?.documents) ? remoteTrechos.json.documents : [])
+  ]
+  const docsRes = docsList.length ? researchStorage.importRemoteDocuments(docsList) : { added: 0, updated: 0 }
+
+  let trechosRes = { added: 0, updated: 0, removed: 0, skipped: 0, codesAdded: 0 }
+  if (remoteTrechos.json) {
+    trechosRes = researchStorage.importExcerpts(remoteTrechos.json)
   }
   let graphRes = { added: 0, updated: 0, removed: 0 }
   if (remoteGrafo.json) {
-    if (remoteGrafo.json.schema && remoteGrafo.json.schema !== GRAPH_SCHEMA) {
-      throw new GithubError(`${grafoPath} não está no formato ${GRAPH_SCHEMA}.`)
-    }
     graphRes = researchStorage.importExcerptGraph(remoteGrafo.json)
   }
   return {
     found: true,
+    docsAdded: docsRes.added,
     ...trechosRes,
     graphAdded: graphRes.added,
     graphUpdated: graphRes.updated,
@@ -259,12 +300,13 @@ export async function pullFromGithub() {
 }
 
 /**
- * Sincroniza: baixa e mescla trechos.json e grafo.json, depois envia projeto/documentos/trechos/grafo.
+ * Sincroniza: baixa e mescla projeto/documentos/trechos/grafo, depois envia os arquivos modificados.
  * @param {{ name?: string }} [author] quem está gravando (só o nome; o e-mail não vai para o repositório)
  */
 export async function syncWithGithub(author) {
   const cfg = getGithubConfig()
   if (!isGithubConfigured(cfg)) throw new GithubError('Configure o GitHub em Persistência antes de sincronizar.')
+  const scopeBefore = userData.scope
   const folder = projectFolder(researchStorage.getProject())
   const paths = {
     projeto: `${folder}/projeto.json`,
@@ -273,27 +315,41 @@ export async function syncWithGithub(author) {
     grafo: `${folder}/grafo.json`
   }
 
-  const [remoteTrechos, remoteGrafo] = await Promise.all([
+  const [remoteProjeto, remoteDocs, remoteTrechos, remoteGrafo] = await Promise.all([
+    readJson(cfg, paths.projeto),
+    readJson(cfg, paths.documentos),
     readJson(cfg, paths.trechos),
     readJson(cfg, paths.grafo)
   ])
-  let merged = { added: 0, updated: 0, removed: 0, skipped: 0 }
+  if (userData.scope !== scopeBefore) {
+    throw new GithubError('A conta ativa mudou durante a sincronização.')
+  }
+  if (remoteTrechos.json && remoteTrechos.json.schema !== EXCERPT_SCHEMA) {
+    throw new GithubError(`${paths.trechos} não está no formato ${EXCERPT_SCHEMA}.`)
+  }
+  if (remoteGrafo.json && remoteGrafo.json.schema && remoteGrafo.json.schema !== GRAPH_SCHEMA) {
+    throw new GithubError(`${paths.grafo} não está no formato ${GRAPH_SCHEMA}.`)
+  }
+
+  if (remoteProjeto.json?.project) {
+    researchStorage.importProjectMeta(remoteProjeto.json.project)
+  }
+  const docsList = [
+    ...(Array.isArray(remoteDocs.json?.documents) ? remoteDocs.json.documents : []),
+    ...(Array.isArray(remoteTrechos.json?.documents) ? remoteTrechos.json.documents : [])
+  ]
+  const docsRes = docsList.length ? researchStorage.importRemoteDocuments(docsList) : { added: 0, updated: 0 }
+
+  let merged = { added: 0, updated: 0, removed: 0, skipped: 0, codesAdded: 0 }
   if (remoteTrechos.json) {
-    if (remoteTrechos.json.schema !== EXCERPT_SCHEMA) {
-      throw new GithubError(`${paths.trechos} não está no formato ${EXCERPT_SCHEMA}.`)
-    }
     merged = researchStorage.importExcerpts(remoteTrechos.json)
   }
   let graphMerged = { added: 0, updated: 0, removed: 0 }
   if (remoteGrafo.json) {
-    if (remoteGrafo.json.schema && remoteGrafo.json.schema !== GRAPH_SCHEMA) {
-      throw new GithubError(`${paths.grafo} não está no formato ${GRAPH_SCHEMA}.`)
-    }
     graphMerged = researchStorage.importExcerptGraph(remoteGrafo.json)
   }
 
   const files = buildFiles(author)
-  const [remoteProjeto, remoteDocs] = await Promise.all([readJson(cfg, paths.projeto), readJson(cfg, paths.documentos)])
   const name = files.projeto.project.name || files.projeto.project.id
   const commits = []
   // Em sequência: commits paralelos no mesmo branch disputam a referência (409).
@@ -310,6 +366,7 @@ export async function syncWithGithub(author) {
   const lastCommitUrl = commits.filter(Boolean).at(-1) || getGithubConfig().lastCommitUrl
   saveGithubConfig({ lastSyncAt: new Date().toISOString(), lastCommitUrl })
   return {
+    docsAdded: docsRes.added,
     ...merged,
     graphAdded: graphMerged.added,
     graphUpdated: graphMerged.updated,

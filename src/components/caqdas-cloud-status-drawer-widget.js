@@ -2,6 +2,7 @@ import { LitElement, html, css } from 'lit'
 import { authService } from 'fzl-fund-appshell--lit'
 import { researchStorage, getPersistenceProviderLabel } from '../services/storage-service.js'
 import { CaqdasPersonalCloudDocsController } from '../controllers/caqdas-controllers.js'
+import { getBackgroundSyncState, triggerBackgroundPull } from '../services/background-sync-service.js'
 import '@material/web/button/outlined-button.js'
 import '@material/web/icon/icon.js'
 import '@fzl/webcomponents-lit/reader-chapterview'
@@ -71,12 +72,53 @@ export class CaqdasCloudStatusDrawerWidget extends LitElement {
       width: 100%;
       --md-outlined-button-container-height: 36px;
     }
+
+    .bg-sync-box {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: #ffffff;
+      border: 1px solid #d5e5e4;
+      font-size: 0.76rem;
+      line-height: 1.35;
+      color: #334155;
+      overflow-wrap: anywhere;
+    }
+
+    .bg-sync-box.error {
+      background: #fef2f2;
+      border-color: #fecaca;
+      color: #991b1b;
+    }
+
+    .bg-sync-btn {
+      background: transparent;
+      border: 1px solid #cbd5e1;
+      border-radius: 6px;
+      padding: 2px 7px;
+      font: inherit;
+      font-size: 0.72rem;
+      font-weight: 600;
+      color: #006a6a;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
+    .bg-sync-btn[disabled] {
+      opacity: 0.55;
+      cursor: default;
+    }
   `
 
   static properties = {
     currentUser: { state: true },
     cloudConfig: { state: true },
-    documents: { state: true }
+    documents: { state: true },
+    bgSync: { state: true }
   }
 
   constructor() {
@@ -84,6 +126,7 @@ export class CaqdasCloudStatusDrawerWidget extends LitElement {
     this.currentUser = authService.getCurrentUser?.() || null
     this.cloudConfig = researchStorage.getCloudSyncConfig()
     this.documents = researchStorage.getDocuments()
+    this.bgSync = getBackgroundSyncState()
     this.cloudController = new CaqdasPersonalCloudDocsController(this)
   }
 
@@ -92,6 +135,7 @@ export class CaqdasCloudStatusDrawerWidget extends LitElement {
     this.currentUser = authService.getCurrentUser?.() || null
     this.cloudConfig = researchStorage.getCloudSyncConfig()
     this.documents = researchStorage.getDocuments()
+    this.bgSync = getBackgroundSyncState()
 
     this._unsubAuth = authService.subscribe((user) => {
       this.currentUser = user || null
@@ -108,8 +152,13 @@ export class CaqdasCloudStatusDrawerWidget extends LitElement {
       this.documents = researchStorage.getDocuments()
     }
 
+    this._onBgSyncChanged = (e) => {
+      this.bgSync = e?.detail || getBackgroundSyncState()
+    }
+
     window.addEventListener('caqdas-cloud-sync-changed', this._onCloudChanged)
     window.addEventListener('caqdas-data-changed', this._onDataChanged)
+    window.addEventListener('caqdas-bg-sync-changed', this._onBgSyncChanged)
   }
 
   disconnectedCallback() {
@@ -117,6 +166,7 @@ export class CaqdasCloudStatusDrawerWidget extends LitElement {
     this._unsubAuth?.()
     window.removeEventListener('caqdas-cloud-sync-changed', this._onCloudChanged)
     window.removeEventListener('caqdas-data-changed', this._onDataChanged)
+    window.removeEventListener('caqdas-bg-sync-changed', this._onBgSyncChanged)
   }
 
   firstUpdated() {
@@ -198,6 +248,50 @@ export class CaqdasCloudStatusDrawerWidget extends LitElement {
           <md-icon slot="icon">tune</md-icon>
           Configurar Persistência &amp; Nuvem
         </md-outlined-button>
+
+        ${this._renderBgSyncStatus()}
+      </div>
+    `
+  }
+
+  _renderBgSyncStatus() {
+    const bg = this.bgSync || getBackgroundSyncState()
+    if (bg.state === 'idle') return ''
+    if (bg.state === 'unconfigured') {
+      return html`
+        <div class="bg-sync-box">
+          <span>
+            GitHub privado não configurado neste dispositivo.
+            <a
+              href="#/config/persistencia"
+              style="color: #0284c7; font-weight: 600;"
+              @click=${() => this._closeDrawer()}
+            >Configurar</a>
+          </span>
+        </div>
+      `
+    }
+    const timeLabel = bg.lastPullAt
+      ? new Date(bg.lastPullAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      : ''
+    return html`
+      <div class="bg-sync-box ${bg.state === 'error' ? 'error' : ''}">
+        <span>
+          ${bg.state === 'syncing'
+            ? '🔄 Sincronizando marcações do GitHub…'
+            : bg.state === 'error'
+              ? `⚠️ ${bg.message}`
+              : `✓ ${bg.message || 'Marcações sincronizadas do GitHub'}${timeLabel ? ` (${timeLabel})` : ''}`}
+        </span>
+        <button
+          type="button"
+          class="bg-sync-btn"
+          ?disabled=${bg.state === 'syncing'}
+          title="Buscar marcações mais recentes do repositório privado no GitHub"
+          @click=${() => void triggerBackgroundPull({ force: true, reason: 'manual' })}
+        >
+          ${bg.state === 'syncing' ? '…' : 'Atualizar'}
+        </button>
       </div>
     `
   }

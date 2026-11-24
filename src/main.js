@@ -6,6 +6,7 @@ import { createAppShell, pattern, authService } from 'fzl-fund-appshell--lit'
 import { researchStorage } from './services/storage-service.js'
 import { clearCachedCloudTokens, CaqdasPersonalCloudDocsController } from './controllers/caqdas-controllers.js'
 import { purgeLegacyGlobalData, setCloudTokenProvider } from './services/user-data-service.js'
+import { startBackgroundSync } from './services/background-sync-service.js'
 
 // Dados antigos sem escopo de usuário: descartados (decisão do usuário; serão reinseridos).
 purgeLegacyGlobalData()
@@ -205,6 +206,9 @@ createAppShell({
     ]
   }
 })
+
+// Inicia sincronização em background do repositório privado do GitHub (marcações, documentos e grafo)
+startBackgroundSync()
 
 // Garante ajuste automático de persistência (GDrive / OneDrive quando autenticado; Local quando deslogado)
 authService.subscribe((user, reason) => {

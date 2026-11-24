@@ -7,6 +7,7 @@ import {
   normalizeExcerptGraph,
   mergeExcerptGraphs
 } from './excerpt-graph-utils.js'
+import { mergeRemoteDocuments, mergeRemoteCodes } from './corpus-sync-utils.js'
 
 export { GRAPH_SCHEMA }
 
@@ -825,19 +826,65 @@ class ResearchStorageService {
     }
   }
 
+  importProjectMeta(remoteProject) {
+    if (!remoteProject || typeof remoteProject !== 'object') return false
+    const current = this._data.project || {}
+    let changed = false
+    if (
+      remoteProject.name &&
+      (!current.name || current.name === 'Meu Projeto de Pesquisa')
+    ) {
+      current.name = String(remoteProject.name)
+      changed = true
+    }
+    if (remoteProject.description && !current.description) {
+      current.description = String(remoteProject.description)
+      changed = true
+    }
+    if (changed) {
+      this._data.project = current
+      this._saveData(this._data)
+    }
+    return changed
+  }
+
+  /**
+   * Restaura metadados de documentos vindos do GitHub (sem sobrescrever conteúdo local)
+   * para que o corpus e suas marcações fiquem disponíveis imediatamente ao entrar em outro dispositivo.
+   */
+  importRemoteDocuments(remoteDocsList) {
+    const res = mergeRemoteDocuments(this.getDocuments(), remoteDocsList, {
+      formatFolder: (f) => this.formatPersistenceFolder(f)
+    })
+    if (res.added > 0 || res.updated > 0) {
+      this._data.documents = res.documents
+      this._saveData(this._data)
+      for (const doc of res.addedDocs) {
+        if (doc.googleDriveFileId) void this._linkRemoteOf(doc)
+      }
+    }
+    return { added: res.added, updated: res.updated }
+  }
+
   /**
    * Importa trechos de um JSON exportado (mescla por id; o mais recente vence).
-   * Trechos de documentos que não existem neste corpus são ignorados (procura por id e, depois, por título).
+   * Códigos referenciados faltantes são restaurados antes da mesclagem dos trechos.
    * Marcas de exclusão (`deleted`) removem trechos locais que não foram editados depois da exclusão.
-   * @returns {{ added: number, updated: number, removed: number, skipped: number }}
+   * @returns {{ added: number, updated: number, removed: number, skipped: number, codesAdded: number }}
    */
   importExcerpts(payload) {
     if (!payload || payload.schema !== EXCERPT_SCHEMA || !Array.isArray(payload.excerpts)) {
       throw new Error(`Arquivo inválido: esperado um JSON "${EXCERPT_SCHEMA}".`)
     }
+    const mergedCodes = mergeRemoteCodes(this.getCodes(), payload.codes)
+    if (mergedCodes.added > 0) {
+      this._data.codes = mergedCodes.codes
+    }
+
     const docs = this.getDocuments()
     const sourceTitles = new Map((payload.documents || []).map((d) => [d.id, d.title]))
-    const result = { added: 0, updated: 0, removed: 0, skipped: 0 }
+    const sourceRemoteIds = new Map((payload.documents || []).map((d) => [d.id, d.remote?.fileId || '']))
+    const result = { added: 0, updated: 0, removed: 0, skipped: 0, codesAdded: mergedCodes.added }
     let tombstonesChanged = false
     const tombstoneOf = (id) => this.getDeletedExcerpts().find((m) => m.id === id)
     for (const mark of Array.isArray(payload.deleted) ? payload.deleted : []) {
@@ -854,7 +901,11 @@ class ResearchStorageService {
         continue
       }
       const title = sourceTitles.get(raw?.docId) || raw?.docTitle
-      const doc = docs.find((d) => d.id === raw?.docId) || (title ? docs.find((d) => d.title === title) : null)
+      const remoteFileId = sourceRemoteIds.get(raw?.docId) || ''
+      const doc =
+        docs.find((d) => d.id === raw?.docId) ||
+        (remoteFileId ? docs.find((d) => d.googleDriveFileId === remoteFileId) : null) ||
+        (title ? docs.find((d) => d.title === title) : null)
       if (!doc || !raw?.id || !raw?.text) {
         result.skipped++
         continue
@@ -888,7 +939,7 @@ class ResearchStorageService {
         graphChanged = true
       }
     }
-    if (result.added || result.updated || result.removed || tombstonesChanged || graphChanged) {
+    if (result.added || result.updated || result.removed || tombstonesChanged || graphChanged || result.codesAdded) {
       this._saveData(this._data)
     }
     return result
