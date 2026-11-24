@@ -186,6 +186,7 @@ function buildFiles(author) {
     participant: d.participant || '',
     folder: d.folder || '',
     excerptCount: (d.quotations || []).length,
+    ...(d.legislation ? { legislation: d.legislation } : {}),
     ...(d.googleDriveFileId
       ? {
           remote: {

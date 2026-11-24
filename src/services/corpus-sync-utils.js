@@ -77,6 +77,7 @@ export function mergeRemoteDocuments(localDocs, remoteDocsList, { formatFolder }
       const ext = inferExtension(raw.title, raw.extension)
       if (ext && !existing.extension) patch.extension = ext
       if (raw.mimeType && !existing.mimeType) patch.mimeType = String(raw.mimeType)
+      if (raw.legislation && !existing.legislation) patch.legislation = raw.legislation
 
       if (Object.keys(patch).length > 0) {
         docs[idx] = { ...existing, ...patch }
@@ -90,14 +91,20 @@ export function mergeRemoteDocuments(localDocs, remoteDocsList, { formatFolder }
     const mimeType = String(raw.mimeType || '').trim()
     const type = inferDocType(raw.type, ext, mimeType)
     const defaultSub =
-      type === 'audio' ? 'capturas-audio' : type === 'image' || type === 'video' ? 'capturas-camera' : 'entrevistas'
+      type === 'audio'
+        ? 'capturas-audio'
+        : type === 'image' || type === 'video'
+          ? 'capturas-camera'
+          : type === 'legislation'
+            ? 'legislacao'
+            : 'entrevistas'
     const folder = typeof formatFolder === 'function' ? formatFolder(raw.folder || defaultSub) : String(raw.folder || defaultSub)
 
     const stub = {
       id: String(raw.id || `doc-gh-${Date.now()}-${addedDocs.length}`),
       title,
       participant: String(raw.participant || 'Importado da nuvem'),
-      group: String(raw.group || 'Corpus Sincronizado'),
+      group: String(raw.group || (type === 'legislation' ? 'Legislação' : 'Corpus Sincronizado')),
       folder,
       type,
       extension: ext,
@@ -107,6 +114,7 @@ export function mergeRemoteDocuments(localDocs, remoteDocsList, { formatFolder }
       tags: Array.isArray(raw.tags) ? raw.tags : ['sincronizado', type],
       content: '',
       quotations: [],
+      ...(raw.legislation ? { legislation: raw.legislation } : {}),
       ...(remoteId
         ? {
             status: 'synced',

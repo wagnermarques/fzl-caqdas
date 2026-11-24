@@ -119,6 +119,30 @@ describe('corpus-sync-utils', () => {
     assert.equal(matchedByFileId.content, 'Conteúdo nuvem local')
   })
 
+  it('preserves legislation metadata and routes legislation documents into /legislacao folder', () => {
+    const remote = [
+      {
+        id: 'doc-lei-13005-2014',
+        title: 'Lei nº 13.005/2014 — Plano Nacional de Educação (PNE)',
+        type: 'legislation',
+        participant: 'Legislação Federal',
+        legislation: {
+          catalogId: 'lei-13005-2014',
+          tipo: 'LEI',
+          numero: '13005',
+          ano: '2014',
+          planaltoUrl: 'https://www.planalto.gov.br/ccivil_03/_ato2011-2014/2014/lei/l13005.htm'
+        }
+      }
+    ]
+
+    const res = mergeRemoteDocuments([], remote, { formatFolder: (f) => `/APP-CAQDAS-HOME-DIR/${f}` })
+    assert.equal(res.added, 1)
+    assert.equal(res.documents[0].folder, '/APP-CAQDAS-HOME-DIR/legislacao')
+    assert.equal(res.documents[0].type, 'legislation')
+    assert.equal(res.documents[0].legislation?.numero, '13005')
+  })
+
   it('restores missing codes without overwriting existing local codes', () => {
     const local = [
       { id: 'c1', name: 'Afeto (editado local)', color: '#111111', categoryId: 'cat-1' }

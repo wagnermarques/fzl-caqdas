@@ -4,6 +4,7 @@ import { researchStorage, getPersistenceProviderLabel } from '../services/storag
 import { userData } from '../services/user-data-service.js'
 import { takeReadingRequest } from '../services/reading-intent.js'
 import { extractPdfText, pdfDocumentFields, loadPdfjs } from '../services/pdf-text.js'
+import { hydrateLegislationDocument } from '../services/legislation-service.js'
 import { isGithubConfigured, syncWithGithub, getGithubConfig } from '../services/github-sync-service.js'
 import { CaqdasDocxCodingController, CaqdasPersonalCloudDocsController } from '../controllers/caqdas-controllers.js'
 import '@material/web/button/filled-button.js'
@@ -579,6 +580,7 @@ export class CaqdasCodingView extends LitElement {
     expandedAsideIds: { state: true },
     readerPrefs: { state: true },
     pdfStatus: { state: true },
+    legislationStatus: { state: true },
     pdfFile: { state: true },
     pdfjs: { state: true },
     githubSyncBusy: { state: true },
@@ -602,6 +604,7 @@ export class CaqdasCodingView extends LitElement {
     this.expandedAsideIds = new Set()
     this.readerPrefs = this._loadReaderPrefs()
     this.pdfStatus = null
+    this.legislationStatus = null
     this.pdfFile = null
     this.pdfjs = null
     this.githubSyncBusy = false
@@ -891,6 +894,7 @@ export class CaqdasCodingView extends LitElement {
     }
 
     void this._ensurePdfText(doc)
+    void this._ensureLegislationText(doc)
     const currentDoc = this.documents.find((d) => d.id === this.selectedDocId) || doc
     this.readerController.openDocument({
       id: currentDoc.id,
@@ -900,6 +904,96 @@ export class CaqdasCodingView extends LitElement {
       textContent: currentDoc.content || '',
       blocks: currentDoc.docxBlocks || undefined
     })
+  }
+
+  async _ensureLegislationText(doc) {
+    const isLegislation = doc?.type === 'legislation' || Boolean(doc?.legislation)
+    if (!isLegislation || String(doc?.content || '').trim()) {
+      if (this.legislationStatus?.docId === doc?.id) {
+        this.legislationStatus = null
+      }
+      return
+    }
+    if (this.legislationStatus?.docId === doc.id && this.legislationStatus.state === 'loading') {
+      return
+    }
+    this.legislationStatus = { docId: doc.id, state: 'loading' }
+    try {
+      const res = await hydrateLegislationDocument(doc)
+      if (res.ok) {
+        this.legislationStatus = null
+        this.documents = researchStorage.getDocuments()
+        if (this.selectedDocId === doc.id) {
+          const updated = this.documents.find((d) => d.id === doc.id) || doc
+          this.readerController.openDocument({
+            id: updated.id,
+            name: updated.title,
+            category: 'text',
+            extension: updated.extension || '.txt',
+            textContent: updated.content || '',
+            blocks: updated.docxBlocks || undefined
+          })
+          this.requestUpdate()
+        }
+      } else {
+        this.legislationStatus = {
+          docId: doc.id,
+          state: 'manual-needed',
+          message: res.message || 'O texto completo desta legislação ainda não está neste dispositivo.',
+          planaltoUrl: doc.legislation?.planaltoUrl || '',
+          normasUrl: doc.legislation?.normasUrl || ''
+        }
+      }
+    } catch (err) {
+      this.legislationStatus = {
+        docId: doc.id,
+        state: 'manual-needed',
+        message: err?.message || 'Não foi possível carregar o texto oficial desta lei neste dispositivo.',
+        planaltoUrl: doc.legislation?.planaltoUrl || '',
+        normasUrl: doc.legislation?.normasUrl || ''
+      }
+    }
+  }
+
+  _renderLegislationStatus(doc) {
+    const st = this.legislationStatus?.docId === doc?.id ? this.legislationStatus : null
+    if (!st) return ''
+    if (st.state === 'loading') {
+      return html`<div slot="empty" class="pdf-status">
+        ⏳ Carregando texto oficial da legislação para este dispositivo…
+      </div>`
+    }
+    const officialUrl = st.planaltoUrl || st.normasUrl
+    return html`<div slot="empty" class="pdf-status">
+      <p>⚖️ ${st.message}</p>
+      <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px;">
+        <button
+          type="button"
+          class="btn-local-badge"
+          @click=${async () => {
+            if (this._reader?.fullscreen) await this._reader.exitFullscreen?.()
+            window.location.hash = '#/fontes?aba=legislacao'
+          }}
+        >
+          ⚖️ Reimportar em Fontes · Legislação
+        </button>
+        ${officialUrl
+          ? html`
+              <a class="btn-docs-badge" href=${officialUrl} target="_blank" rel="noopener noreferrer">
+                ↗ Abrir texto oficial (${st.planaltoUrl ? 'Planalto' : 'Normas.leg.br'})
+              </a>
+            `
+          : ''}
+      </div>
+    </div>`
+  }
+
+  _renderEmptyReaderSlot(doc) {
+    const pdf = this._renderPdfStatus(doc)
+    if (pdf) return pdf
+    const leg = this._renderLegislationStatus(doc)
+    if (leg) return leg
+    return html`<span slot="empty">Nenhum conteúdo de texto disponível para este documento.</span>`
   }
 
   _selectDoc(id) {
@@ -1376,7 +1470,8 @@ export class CaqdasCodingView extends LitElement {
           ? { color: '#0284c7', label: '☁️ Sincronizado' }
           : { color: '#64748b', label: '💾 Local' }
     const docFolder = researchStorage.formatPersistenceFolder(
-      doc?.folder || (doc?.type === 'interview' ? 'entrevistas' : 'documentos')
+      doc?.folder ||
+        (doc?.type === 'interview' ? 'entrevistas' : doc?.type === 'legislation' ? 'legislacao' : 'documentos')
     )
     const excerpts = doc ? researchStorage.getDocumentExcerpts(doc.id) : []
     const anchored = this._anchoredExcerpts(doc, excerpts, codeMap)
@@ -1421,6 +1516,18 @@ export class CaqdasCodingView extends LitElement {
           `)}
         </select>
 
+        <button
+          type="button"
+          class="tool-btn"
+          title="Pesquisar ou inserir lei (Planalto / Senado) no corpus"
+          @click=${() => {
+            window.location.hash = '#/fontes?aba=legislacao'
+          }}
+        >
+          <md-icon>gavel</md-icon>
+          + Legislação
+        </button>
+
         <fzl-reader-chapterview
           variant="pill"
           color=${persistenceChipColor}
@@ -1454,6 +1561,19 @@ export class CaqdasCodingView extends LitElement {
           <div class="excerpt-meta">
             Participante: <strong>${doc?.participant || 'N/A'}</strong> | Pasta: <code>${docFolder}</code>
             | Palavras: <strong>${wordCount}</strong>
+            ${doc?.legislation?.planaltoUrl || doc?.legislation?.normasUrl
+              ? html`
+                  |
+                  <a
+                    href=${doc.legislation.planaltoUrl || doc.legislation.normasUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style="color: var(--md-sys-color-primary, #006a6a); font-weight: 600;"
+                  >
+                    ${doc.legislation.planaltoUrl ? 'Texto oficial (Planalto) ↗' : 'Texto oficial ↗'}
+                  </a>
+                `
+              : ''}
           </div>
 
           <div class="reader-frame">
@@ -1474,7 +1594,7 @@ export class CaqdasCodingView extends LitElement {
               @fzl-reader-annotation-click=${this._handleAnnotationClick}
               @fzl-reader-preferences-change=${this._handleReaderPrefs}
             >
-              ${this._renderPdfStatus(doc)}
+              ${this._renderEmptyReaderSlot(doc)}
               <div slot="aside" class="aside-list">
                 <div class="aside-header">
                   <h3 class="aside-title">Trechos (${excerpts.length})</h3>
@@ -1636,7 +1756,6 @@ export class CaqdasCodingView extends LitElement {
                         `
                       : ''}
                   `}
-              <span slot="empty">Nenhum conteúdo de texto disponível para este documento.</span>
             </fzl-document-reader>
           </div>
 

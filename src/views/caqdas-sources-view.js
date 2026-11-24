@@ -12,6 +12,7 @@ import '@fzl/webcomponents-lit/file-manager'
 import '@fzl/webcomponents-lit/document-picker'
 import '@fzl/webcomponents-lit/camera-capture'
 import '../components/caqdas-audio-recorder.js'
+import '../components/caqdas-legislation-panel.js'
 
 export class CaqdasSourcesView extends LitElement {
   static styles = css`
@@ -345,9 +346,16 @@ export class CaqdasSourcesView extends LitElement {
     this._autoPulledFor = ''
   }
 
-  disconnectedCallback() {
-    super.disconnectedCallback()
-    this.pendingCaptures.forEach((p) => p.previewUrl && URL.revokeObjectURL(p.previewUrl))
+  _syncTabFromHash() {
+    if (typeof window === 'undefined') return
+    const hash = window.location.hash || ''
+    const qIdx = hash.indexOf('?')
+    if (qIdx < 0) return
+    const params = new URLSearchParams(hash.slice(qIdx + 1))
+    const aba = params.get('aba')
+    if (aba === 'legislacao') {
+      this.activeTab = 'legislation'
+    }
   }
 
   firstUpdated() {
@@ -394,6 +402,7 @@ export class CaqdasSourcesView extends LitElement {
   connectedCallback() {
     super.connectedCallback()
     this._loadDocs()
+    this._syncTabFromHash()
     this.cloudConfig = researchStorage.getCloudSyncConfig()
     this.currentFolder = `/${researchStorage.getHomeDirName()}`
 
@@ -414,6 +423,7 @@ export class CaqdasSourcesView extends LitElement {
     })
 
     this._onDataChanged = () => this._loadDocs()
+    this._onHashChange = () => this._syncTabFromHash()
     this._onCloudChanged = (e) => {
       const prevHome = this.currentFolder?.split('/').filter(Boolean)[0] || ''
       this.cloudConfig = e.detail || researchStorage.getCloudSyncConfig()
@@ -433,13 +443,16 @@ export class CaqdasSourcesView extends LitElement {
 
     window.addEventListener('caqdas-data-changed', this._onDataChanged)
     window.addEventListener('caqdas-cloud-sync-changed', this._onCloudChanged)
+    window.addEventListener('hashchange', this._onHashChange)
   }
 
   disconnectedCallback() {
     super.disconnectedCallback()
+    this.pendingCaptures.forEach((p) => p.previewUrl && URL.revokeObjectURL(p.previewUrl))
     if (this._unsubAuth) this._unsubAuth()
     window.removeEventListener('caqdas-data-changed', this._onDataChanged)
     window.removeEventListener('caqdas-cloud-sync-changed', this._onCloudChanged)
+    window.removeEventListener('hashchange', this._onHashChange)
   }
 
   _loadDocs() {
@@ -537,7 +550,8 @@ export class CaqdasSourcesView extends LitElement {
             ? '☁️ Sincronizado'
             : '💾 Documento Local'
       const folder = researchStorage.formatPersistenceFolder(
-        doc.folder || (doc.type === 'interview' ? 'entrevistas' : 'documentos')
+        doc.folder ||
+          (doc.type === 'interview' ? 'entrevistas' : doc.type === 'legislation' ? 'legislacao' : 'documentos')
       )
       const binaryFile = researchStorage.getBinaryFile(doc.id)
       const objectUrl = researchStorage.getFileObjectUrl(doc.id)
@@ -1065,9 +1079,20 @@ export class CaqdasSourcesView extends LitElement {
             </p>
           </div>
 
-          <div class="corpus-rules-badge">
-            <md-icon>verified</md-icon>
-            <span>Bardin: Corpus Exaustivo &amp; Pertinente</span>
+          <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 10px;">
+            <md-filled-button
+              @click=${() => {
+                this.activeTab = 'legislation'
+              }}
+            >
+              <md-icon slot="icon">gavel</md-icon>
+              Adicionar legislação ao corpus
+            </md-filled-button>
+
+            <div class="corpus-rules-badge">
+              <md-icon>verified</md-icon>
+              <span>Bardin: Corpus Exaustivo &amp; Pertinente</span>
+            </div>
           </div>
         </div>
 
@@ -1086,6 +1111,16 @@ export class CaqdasSourcesView extends LitElement {
         >
           <md-icon>folder</md-icon>
           Gerenciador de Arquivos (fzl-file-manager)
+        </button>
+
+        <button
+          class="tab-btn ${this.activeTab === 'legislation' ? 'active' : ''}"
+          @click=${() => {
+            this.activeTab = 'legislation'
+          }}
+        >
+          <md-icon>gavel</md-icon>
+          Legislação (Planalto / Busca)
         </button>
 
         <button
@@ -1211,6 +1246,23 @@ export class CaqdasSourcesView extends LitElement {
                               </button>
                             `
                           : ''}
+                        ${this.selectedDocForReading.legislation?.planaltoUrl ||
+                        this.selectedDocForReading.legislation?.normasUrl
+                          ? html`
+                              <a
+                                class="btn-external-link"
+                                href=${this.selectedDocForReading.legislation.planaltoUrl ||
+                                this.selectedDocForReading.legislation.normasUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                <md-icon style="font-size: 16px;">gavel</md-icon>
+                                ${this.selectedDocForReading.legislation.planaltoUrl
+                                  ? 'Ver texto oficial no Planalto ↗'
+                                  : 'Ver texto oficial ↗'}
+                              </a>
+                            `
+                          : ''}
                         ${this.selectedDocForReading.externalViewerUrl
                           ? html`
                               <a
@@ -1239,6 +1291,15 @@ export class CaqdasSourcesView extends LitElement {
                 </md-filled-button>
               </div>
             </div>
+          `
+        : ''}
+
+      ${this.activeTab === 'legislation'
+        ? html`
+            <caqdas-legislation-panel
+              .documents=${this.documents}
+              @caqdas-legislation-added=${() => this._loadDocs()}
+            ></caqdas-legislation-panel>
           `
         : ''}
 
