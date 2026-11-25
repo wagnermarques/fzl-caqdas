@@ -4,6 +4,7 @@ import { researchStorage } from '../services/storage-service.js'
 import { userData } from '../services/user-data-service.js'
 import { openForReading } from '../services/reading-intent.js'
 import { isGithubConfigured, syncWithGithub, getGithubConfig } from '../services/github-sync-service.js'
+import { isPersonalCloudSyncReady, syncWithPersonalCloud } from '../services/cloud-excerpts-sync-service.js'
 import {
   NODE_WIDTH,
   NODE_HEIGHT,
@@ -987,9 +988,11 @@ export class CaqdasGraphView extends LitElement {
 
   async _handleGithubSave() {
     if (this.githubSyncBusy) return
-    if (!isGithubConfigured()) {
+    const ghReady = isGithubConfigured()
+    const cloudReady = isPersonalCloudSyncReady()
+    if (!ghReady && !cloudReady) {
       const goConfig = confirm(
-        'O repositório remoto privado do GitHub ainda não está configurado.\n\nDeseja ir para Persistência & Sincronização para configurar agora?'
+        'O repositório remoto privado do GitHub (ou Google Drive/OneDrive) ainda não está configurado.\n\nDeseja ir para Persistência & Sincronização para configurar agora?'
       )
       if (goConfig) window.location.hash = '#/config/persistencia'
       return
@@ -997,14 +1000,36 @@ export class CaqdasGraphView extends LitElement {
     this.githubSyncBusy = true
     this.githubSyncStatus = null
     try {
+      if (!ghReady && cloudReady) {
+        const r = await syncWithPersonalCloud({ interactive: true, push: true })
+        const providerLabel = r.provider === 'onedrive' ? 'OneDrive' : 'Google Drive'
+        this.githubSyncStatus = {
+          kind: 'ok',
+          text: `Sincronizado com ${providerLabel} (${r.excerptCount || 0} trecho(s) e ${r.relationCount || 0} relação(ões)).`,
+          link: ''
+        }
+        return
+      }
       const user = authService.getCurrentUser?.()
       const r = await syncWithGithub(user ? { name: user.name || '' } : null)
+      if (cloudReady) {
+        void syncWithPersonalCloud({ interactive: false, push: true }).catch(() => {})
+      }
       const relInfo = r.relationCount ? ` e ${r.relationCount} relação(ões)` : ''
+      const merged = [
+        r.added && `${r.added} trecho(s) novo(s)`,
+        r.updated && `${r.updated} trecho(s) atualizado(s)`,
+        r.removed && `${r.removed} removido(s)`,
+        r.graphAdded && `${r.graphAdded} relação(ões) nova(s)`,
+        r.graphUpdated && `${r.graphUpdated} relação(ões) atualizada(s)`
+      ].filter(Boolean)
       this.githubSyncStatus = {
         kind: 'ok',
-        text: r.pushed
-          ? `Commit e push realizados (${r.pushed} arquivo(s) em ${r.folder}/: ${r.excerptCount} trecho(s)${relInfo}).`
-          : `Já sincronizado com ${r.folder}/ (sem alterações pendentes).`,
+        text:
+          (r.pushed
+            ? `Sincronização concluída (${r.pushed} arquivo(s) enviados em ${r.folder}/: ${r.excerptCount} trecho(s)${relInfo}).`
+            : `Já sincronizado com ${r.folder}/ (sem alterações pendentes).`) +
+          (merged.length ? ` Recebido: ${merged.join(', ')}.` : ''),
         link: r.pushed ? r.lastCommitUrl : ''
       }
     } catch (err) {
@@ -1372,7 +1397,7 @@ export class CaqdasGraphView extends LitElement {
         <strong>Como ajustar o grafo:</strong> arraste livremente os cartões no quadro para agrupar núcleos de sentido;
         use <strong>Conectar marcações</strong> (ou o botão <em>Conectar</em> no cartão) para ligar duas marcações com uma
         relação de Bardin; clique sobre uma seta para editar o rótulo e registrar sua nota inferencial; e clique em
-        <strong>Salvar no GitHub</strong> para gravar trechos e grafo em JSON no repositório privado.
+        <strong>Sincronizar</strong> para buscar marcações remotas e gravar trechos e grafo.
       </div>
     `
   }
@@ -1403,12 +1428,14 @@ export class CaqdasGraphView extends LitElement {
             class="btn primary"
             ?disabled=${this.githubSyncBusy}
             title=${this._githubConfigured
-              ? `Commit & push JSON (trechos e grafo) para ${githubCfg.repo}`
-              : 'Configurar repositório privado e salvar no GitHub'}
+              ? `Sincronizar (pull + push) trechos e grafo com ${githubCfg.repo}`
+              : isPersonalCloudSyncReady()
+                ? 'Sincronizar (pull + push) marcações com a nuvem pessoal'
+                : 'Configurar nuvem ou GitHub privado para sincronizar'}
             @click=${this._handleGithubSave}
           >
-            <md-icon>${this.githubSyncBusy ? 'sync' : 'cloud_upload'}</md-icon>
-            ${this.githubSyncBusy ? 'Salvando JSON…' : 'Salvar no GitHub'}
+            <md-icon>sync</md-icon>
+            ${this.githubSyncBusy ? 'Sincronizando…' : 'Sincronizar'}
           </button>
           <a class="btn" href="#/codificacao">
             <md-icon>edit_note</md-icon> Voltar à Codificação

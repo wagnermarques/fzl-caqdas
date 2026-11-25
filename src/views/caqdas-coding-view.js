@@ -1312,10 +1312,19 @@ export class CaqdasCodingView extends LitElement {
       if (!ghReady && cloudReady) {
         const r = await syncWithPersonalCloud({ interactive: true, push: true })
         const providerLabel = r.provider === 'onedrive' ? 'OneDrive' : 'Google Drive'
+        const merged = [
+          r.added && `${r.added} trecho(s) novo(s)`,
+          r.updated && `${r.updated} trecho(s) atualizado(s)`,
+          r.removed && `${r.removed} removido(s)`,
+          r.graphAdded && `${r.graphAdded} relação(ões) nova(s)`,
+          r.graphUpdated && `${r.graphUpdated} relação(ões) atualizada(s)`
+        ].filter(Boolean)
         this.githubSyncStatus = {
           kind: 'ok',
-          short: 'Salvo no Drive',
-          text: `Marcações sincronizadas com ${providerLabel} (${r.excerptCount || 0} trecho(s) e ${r.relationCount || 0} relação(ões)).`,
+          short: 'Sincronizado',
+          text:
+            `Sincronizado com ${providerLabel} (${r.excerptCount || 0} trecho(s) e ${r.relationCount || 0} relação(ões)).` +
+            (merged.length ? ` Recebido: ${merged.join(', ')}.` : ''),
           link: ''
         }
         return
@@ -1335,19 +1344,19 @@ export class CaqdasCodingView extends LitElement {
       ].filter(Boolean)
       this.githubSyncStatus = {
         kind: 'ok',
-        short: r.pushed ? 'Salvo' : 'Em dia',
+        short: 'Sincronizado',
         text:
           (r.pushed
-            ? `Commit e push realizados (${r.pushed} arquivo(s) em ${r.folder}/: ${r.excerptCount} trecho(s)${relInfo}).`
+            ? `Sincronização concluída (${r.pushed} arquivo(s) enviados em ${r.folder}/: ${r.excerptCount} trecho(s)${relInfo}).`
             : `Já sincronizado com ${r.folder}/ (sem alterações pendentes).`) +
-          (merged.length ? ` Mesclado: ${merged.join(', ')}.` : ''),
+          (merged.length ? ` Recebido: ${merged.join(', ')}.` : ''),
         link: r.pushed ? r.lastCommitUrl : ''
       }
     } catch (err) {
       const msg = err?.message || String(err)
       this.githubSyncStatus = { kind: 'error', text: msg }
       if (this._reader?.fullscreen && !this._reader?.asideOpen) {
-        alert(`Erro ao salvar no GitHub: ${msg}`)
+        alert(`Erro ao sincronizar: ${msg}`)
       }
     } finally {
       this.githubSyncBusy = false
@@ -1621,12 +1630,14 @@ export class CaqdasCodingView extends LitElement {
                       class="tool-btn primary"
                       ?disabled=${this.githubSyncBusy}
                       title=${this._githubConfigured
-                        ? `Commit & push JSON para ${githubCfg.repo}`
-                        : 'Configurar e salvar no GitHub privado'}
+                        ? `Sincronizar (pull + push) trechos e grafo com ${githubCfg.repo}`
+                        : isPersonalCloudSyncReady()
+                          ? 'Sincronizar (pull + push) marcações com a nuvem pessoal'
+                          : 'Configurar nuvem ou GitHub privado para sincronizar'}
                       @click=${this._handleGithubSave}
                     >
-                      <md-icon>${this.githubSyncBusy ? 'sync' : 'cloud_upload'}</md-icon>
-                      ${this.githubSyncBusy ? 'Salvando…' : 'Salvar'}
+                      <md-icon>sync</md-icon>
+                      ${this.githubSyncBusy ? 'Sincronizando…' : 'Sincronizar'}
                     </button>
                     <button
                       type="button"
@@ -1702,12 +1713,14 @@ export class CaqdasCodingView extends LitElement {
                       class="tool-btn primary"
                       ?disabled=${this.githubSyncBusy}
                       title=${this._githubConfigured
-                        ? `Fazer commit e push do JSON (trechos e grafo) para ${githubCfg.repo}`
-                        : 'Configurar repositório privado e salvar no GitHub'}
+                        ? `Sincronizar (pull + push) trechos e grafo com ${githubCfg.repo}`
+                        : isPersonalCloudSyncReady()
+                          ? 'Sincronizar (pull + push) marcações com a nuvem pessoal'
+                          : 'Configurar nuvem ou GitHub privado para sincronizar'}
                       @click=${this._handleGithubSave}
                     >
-                      <md-icon>${this.githubSyncBusy ? 'sync' : 'cloud_upload'}</md-icon>
-                      <span>${this.githubSyncBusy ? 'Salvando…' : 'Salvar'}</span>
+                      <md-icon>sync</md-icon>
+                      <span>${this.githubSyncBusy ? 'Sincronizando…' : 'Sincronizar'}</span>
                     </button>
                     ${this.githubSyncStatus
                       ? this.githubSyncStatus.link
@@ -1720,7 +1733,7 @@ export class CaqdasCodingView extends LitElement {
                               rel="noopener noreferrer"
                               title=${this.githubSyncStatus.text}
                             >
-                              ✓ Salvo ↗
+                              ✓ Sincronizado ↗
                             </a>
                           `
                         : html`
@@ -1731,7 +1744,7 @@ export class CaqdasCodingView extends LitElement {
                             >
                               ${this.githubSyncStatus.kind === 'error'
                                 ? '⚠ Erro'
-                                : `✓ ${this.githubSyncStatus.short || 'Em dia'}`}
+                                : `✓ ${this.githubSyncStatus.short || 'Sincronizado'}`}
                             </span>
                           `
                       : ''}
