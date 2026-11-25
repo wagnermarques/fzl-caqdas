@@ -135,6 +135,112 @@ export function mergeRemoteDocuments(localDocs, remoteDocsList, { formatFolder }
   return { documents: docs, added, updated, addedDocs }
 }
 
+export const PROJECT_SCHEMA = 'caqdas-projeto/v1'
+export const DOCUMENTS_SCHEMA = 'caqdas-documentos/v1'
+const SNAPSHOT_VOLATILE_KEYS = new Set(['exportedAt', 'savedAt', 'savedBy'])
+
+export function stableSnapshotJson(json) {
+  return JSON.stringify(json, (k, v) => (SNAPSHOT_VOLATILE_KEYS.has(k) ? undefined : v))
+}
+
+/**
+ * Monta os quatro arquivos canônicos do projeto (`projeto`, `documentos`, `trechos`, `grafo`)
+ * para sincronização em nuvem (GitHub, Google Drive ou OneDrive).
+ */
+export function buildProjectSnapshotFiles({ project = {}, documents = [], excerpts = {}, grafo = {}, author = null } = {}) {
+  const now = new Date().toISOString()
+  const savedBy = author ? { name: author.name || '', app: 'caqdas' } : { app: 'caqdas' }
+  const serializedDocs = (Array.isArray(documents) ? documents : []).map((d) => ({
+    id: d.id,
+    title: d.title || '',
+    type: d.type || '',
+    extension: d.extension || '',
+    mimeType: d.mimeType || '',
+    participant: d.participant || '',
+    folder: d.folder || '',
+    excerptCount: (d.quotations || []).length,
+    ...(d.legislation ? { legislation: d.legislation } : {}),
+    ...(d.googleDriveFileId
+      ? {
+          remote: {
+            provider: d.storageProvider === 'onedrive' ? 'onedrive' : 'google-drive',
+            fileId: d.googleDriveFileId,
+            url: d.externalViewerUrl || ''
+          }
+        }
+      : {})
+  }))
+
+  return {
+    projeto: {
+      schema: PROJECT_SCHEMA,
+      savedAt: now,
+      savedBy,
+      project: {
+        id: project.id || '',
+        name: project.name || '',
+        description: project.description || '',
+        createdDate: project.createdDate || ''
+      },
+      files: { documentos: 'documentos.json', trechos: 'trechos.json', grafo: 'grafo.json' }
+    },
+    documentos: { schema: DOCUMENTS_SCHEMA, savedAt: now, documents: serializedDocs },
+    trechos: { ...excerpts, savedBy },
+    grafo: { ...grafo, savedBy }
+  }
+}
+
+/**
+ * Aplica metadados de projeto, documentos, códigos, trechos e grafo vindos de uma fonte remota
+ * sobre o `storage` local, preservando conteúdo local e respeitando timestamps/tombstones.
+ */
+export function applyRemoteProjectSnapshot({
+  remoteProjeto = null,
+  remoteDocs = null,
+  remoteTrechos = null,
+  remoteGrafo = null,
+  storage,
+  excerptSchema = 'caqdas-trechos/v1',
+  graphSchema = 'caqdas-grafo/v1',
+  labelPrefix = ''
+} = {}) {
+  if (remoteTrechos && remoteTrechos.schema !== excerptSchema) {
+    throw new Error(`${labelPrefix}trechos.json não está no formato ${excerptSchema}.`)
+  }
+  if (remoteGrafo && remoteGrafo.schema && remoteGrafo.schema !== graphSchema) {
+    throw new Error(`${labelPrefix}grafo.json não está no formato ${graphSchema}.`)
+  }
+
+  if (remoteProjeto?.project) {
+    storage.importProjectMeta(remoteProjeto.project)
+  }
+
+  const docsList = [
+    ...(Array.isArray(remoteDocs?.documents) ? remoteDocs.documents : []),
+    ...(Array.isArray(remoteTrechos?.documents) ? remoteTrechos.documents : [])
+  ]
+  const docsRes = docsList.length ? storage.importRemoteDocuments(docsList) : { added: 0, updated: 0 }
+
+  let trechosRes = { added: 0, updated: 0, removed: 0, skipped: 0, codesAdded: 0 }
+  if (remoteTrechos) {
+    trechosRes = storage.importExcerpts(remoteTrechos)
+  }
+
+  let graphRes = { added: 0, updated: 0, removed: 0 }
+  if (remoteGrafo) {
+    graphRes = storage.importExcerptGraph(remoteGrafo)
+  }
+
+  return {
+    found: Boolean(remoteProjeto || remoteDocs || remoteTrechos || remoteGrafo),
+    docsAdded: docsRes.added,
+    ...trechosRes,
+    graphAdded: graphRes.added,
+    graphUpdated: graphRes.updated,
+    graphRemoved: graphRes.removed
+  }
+}
+
 /**
  * Adiciona códigos vindos de `trechos.json.codes` que ainda não existam localmente.
  */

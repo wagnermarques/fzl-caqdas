@@ -19,13 +19,19 @@
  */
 import { userData } from './user-data-service.js'
 import { researchStorage, EXCERPT_SCHEMA, GRAPH_SCHEMA } from './storage-service.js'
+import {
+  PROJECT_SCHEMA,
+  DOCUMENTS_SCHEMA,
+  stableSnapshotJson,
+  buildProjectSnapshotFiles,
+  applyRemoteProjectSnapshot
+} from './corpus-sync-utils.js'
 
 const CONFIG_KEY = 'github_sync_v1'
 const API = 'https://api.github.com'
 const DEFAULT_CONFIG = Object.freeze({ repo: '', branch: '', token: '', lastSyncAt: '', lastCommitUrl: '' })
 
-export const PROJECT_SCHEMA = 'caqdas-projeto/v1'
-export const DOCUMENTS_SCHEMA = 'caqdas-documentos/v1'
+export { PROJECT_SCHEMA, DOCUMENTS_SCHEMA }
 
 export function getGithubConfig() {
   try {
@@ -136,12 +142,8 @@ async function readJson(cfg, path) {
   }
 }
 
-// Campos que mudam a cada gravação e não devem, sozinhos, gerar commit.
-const VOLATILE = new Set(['exportedAt', 'savedAt', 'savedBy'])
-const stable = (json) => JSON.stringify(json, (k, v) => (VOLATILE.has(k) ? undefined : v))
-
 async function writeJson(cfg, path, json, previous, message) {
-  if (previous.json && stable(previous.json) === stable(json)) return null
+  if (previous.json && stableSnapshotJson(previous.json) === stableSnapshotJson(json)) return null
   const result = await gh(cfg, `/repos/${cfg.repo}/contents/${encodePath(path)}`, {
     method: 'PUT',
     body: {
@@ -173,47 +175,16 @@ export async function testGithubConnection(cfg = getGithubConfig()) {
 
 function buildFiles(author) {
   const project = researchStorage.getProject() || {}
-  const now = new Date().toISOString()
-  const savedBy = author ? { name: author.name || '', app: 'caqdas' } : { app: 'caqdas' }
-  const excerpts = researchStorage.exportExcerpts()
-  const grafo = researchStorage.exportExcerptGraph()
-  const documents = researchStorage.getDocuments().map((d) => ({
-    id: d.id,
-    title: d.title || '',
-    type: d.type || '',
-    extension: d.extension || '',
-    mimeType: d.mimeType || '',
-    participant: d.participant || '',
-    folder: d.folder || '',
-    excerptCount: (d.quotations || []).length,
-    ...(d.legislation ? { legislation: d.legislation } : {}),
-    ...(d.googleDriveFileId
-      ? {
-          remote: {
-            provider: d.storageProvider === 'onedrive' ? 'onedrive' : 'google-drive',
-            fileId: d.googleDriveFileId,
-            url: d.externalViewerUrl || ''
-          }
-        }
-      : {})
-  }))
+  const snapshot = buildProjectSnapshotFiles({
+    project,
+    documents: researchStorage.getDocuments(),
+    excerpts: researchStorage.exportExcerpts(),
+    grafo: researchStorage.exportExcerptGraph(),
+    author
+  })
   return {
     folder: projectFolder(project),
-    projeto: {
-      schema: PROJECT_SCHEMA,
-      savedAt: now,
-      savedBy,
-      project: {
-        id: project.id || '',
-        name: project.name || '',
-        description: project.description || '',
-        createdDate: project.createdDate || ''
-      },
-      files: { documentos: 'documentos.json', trechos: 'trechos.json', grafo: 'grafo.json' }
-    },
-    documentos: { schema: DOCUMENTS_SCHEMA, savedAt: now, documents },
-    trechos: { ...excerpts, savedBy },
-    grafo: { ...grafo, savedBy }
+    ...snapshot
   }
 }
 
@@ -266,37 +237,19 @@ export async function pullFromGithub() {
       graphRemoved: 0
     }
   }
-  if (remoteTrechos.json && remoteTrechos.json.schema !== EXCERPT_SCHEMA) {
-    throw new GithubError(`${paths.trechos} não está no formato ${EXCERPT_SCHEMA}.`)
-  }
-  if (remoteGrafo.json && remoteGrafo.json.schema && remoteGrafo.json.schema !== GRAPH_SCHEMA) {
-    throw new GithubError(`${paths.grafo} não está no formato ${GRAPH_SCHEMA}.`)
-  }
-
-  if (remoteProjeto.json?.project) {
-    researchStorage.importProjectMeta(remoteProjeto.json.project)
-  }
-  const docsList = [
-    ...(Array.isArray(remoteDocs.json?.documents) ? remoteDocs.json.documents : []),
-    ...(Array.isArray(remoteTrechos.json?.documents) ? remoteTrechos.json.documents : [])
-  ]
-  const docsRes = docsList.length ? researchStorage.importRemoteDocuments(docsList) : { added: 0, updated: 0 }
-
-  let trechosRes = { added: 0, updated: 0, removed: 0, skipped: 0, codesAdded: 0 }
-  if (remoteTrechos.json) {
-    trechosRes = researchStorage.importExcerpts(remoteTrechos.json)
-  }
-  let graphRes = { added: 0, updated: 0, removed: 0 }
-  if (remoteGrafo.json) {
-    graphRes = researchStorage.importExcerptGraph(remoteGrafo.json)
-  }
-  return {
-    found: true,
-    docsAdded: docsRes.added,
-    ...trechosRes,
-    graphAdded: graphRes.added,
-    graphUpdated: graphRes.updated,
-    graphRemoved: graphRes.removed
+  try {
+    return applyRemoteProjectSnapshot({
+      remoteProjeto: remoteProjeto.json,
+      remoteDocs: remoteDocs.json,
+      remoteTrechos: remoteTrechos.json,
+      remoteGrafo: remoteGrafo.json,
+      storage: researchStorage,
+      excerptSchema: EXCERPT_SCHEMA,
+      graphSchema: GRAPH_SCHEMA,
+      labelPrefix: `${folder}/`
+    })
+  } catch (err) {
+    throw new GithubError(err.message)
   }
 }
 
@@ -325,29 +278,21 @@ export async function syncWithGithub(author) {
   if (userData.scope !== scopeBefore) {
     throw new GithubError('A conta ativa mudou durante a sincronização.')
   }
-  if (remoteTrechos.json && remoteTrechos.json.schema !== EXCERPT_SCHEMA) {
-    throw new GithubError(`${paths.trechos} não está no formato ${EXCERPT_SCHEMA}.`)
-  }
-  if (remoteGrafo.json && remoteGrafo.json.schema && remoteGrafo.json.schema !== GRAPH_SCHEMA) {
-    throw new GithubError(`${paths.grafo} não está no formato ${GRAPH_SCHEMA}.`)
-  }
 
-  if (remoteProjeto.json?.project) {
-    researchStorage.importProjectMeta(remoteProjeto.json.project)
-  }
-  const docsList = [
-    ...(Array.isArray(remoteDocs.json?.documents) ? remoteDocs.json.documents : []),
-    ...(Array.isArray(remoteTrechos.json?.documents) ? remoteTrechos.json.documents : [])
-  ]
-  const docsRes = docsList.length ? researchStorage.importRemoteDocuments(docsList) : { added: 0, updated: 0 }
-
-  let merged = { added: 0, updated: 0, removed: 0, skipped: 0, codesAdded: 0 }
-  if (remoteTrechos.json) {
-    merged = researchStorage.importExcerpts(remoteTrechos.json)
-  }
-  let graphMerged = { added: 0, updated: 0, removed: 0 }
-  if (remoteGrafo.json) {
-    graphMerged = researchStorage.importExcerptGraph(remoteGrafo.json)
+  let applied
+  try {
+    applied = applyRemoteProjectSnapshot({
+      remoteProjeto: remoteProjeto.json,
+      remoteDocs: remoteDocs.json,
+      remoteTrechos: remoteTrechos.json,
+      remoteGrafo: remoteGrafo.json,
+      storage: researchStorage,
+      excerptSchema: EXCERPT_SCHEMA,
+      graphSchema: GRAPH_SCHEMA,
+      labelPrefix: `${folder}/`
+    })
+  } catch (err) {
+    throw new GithubError(err.message)
   }
 
   const files = buildFiles(author)
@@ -367,11 +312,7 @@ export async function syncWithGithub(author) {
   const lastCommitUrl = commits.filter(Boolean).at(-1) || getGithubConfig().lastCommitUrl
   saveGithubConfig({ lastSyncAt: new Date().toISOString(), lastCommitUrl })
   return {
-    docsAdded: docsRes.added,
-    ...merged,
-    graphAdded: graphMerged.added,
-    graphUpdated: graphMerged.updated,
-    graphRemoved: graphMerged.removed,
+    ...applied,
     pushed: commits.length,
     folder,
     excerptCount: files.trechos.excerpts.length,

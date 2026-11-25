@@ -4,7 +4,10 @@ import {
   inferExtension,
   inferDocType,
   mergeRemoteDocuments,
-  mergeRemoteCodes
+  mergeRemoteCodes,
+  buildProjectSnapshotFiles,
+  applyRemoteProjectSnapshot,
+  stableSnapshotJson
 } from '../src/services/corpus-sync-utils.js'
 
 describe('corpus-sync-utils', () => {
@@ -163,5 +166,67 @@ describe('corpus-sync-utils', () => {
       color: '#059669',
       categoryId: 'cat-2'
     })
+  })
+
+  it('builds project snapshots and restores excerpts onto Drive-imported docs in a new browser', () => {
+    const snapshot = buildProjectSnapshotFiles({
+      project: { id: 'proj-default', name: 'Evasão EPT' },
+      documents: [
+        {
+          id: 'doc-old-browser-1',
+          title: 'Acórdão 986 de 2024 Plenario.pdf',
+          type: 'pdf',
+          googleDriveFileId: 'drive-acordao-986',
+          storageProvider: 'google-drive',
+          quotations: [{ id: 'q1', text: 'permanência e êxito' }]
+        }
+      ],
+      excerpts: {
+        schema: 'caqdas-trechos/v1',
+        documents: [{ id: 'doc-old-browser-1', title: 'Acórdão 986 de 2024 Plenario.pdf' }],
+        excerpts: [{ id: 'q1', docId: 'doc-old-browser-1', text: 'permanência e êxito', title: 'Meta' }]
+      },
+      grafo: { schema: 'caqdas-grafo/v1', nodes: {}, relations: [], deleted: [] },
+      author: { name: 'Wagner' }
+    })
+
+    assert.equal(snapshot.projeto.schema, 'caqdas-projeto/v1')
+    assert.equal(snapshot.documentos.schema, 'caqdas-documentos/v1')
+    assert.equal(snapshot.documentos.documents[0].remote.fileId, 'drive-acordao-986')
+    assert.equal(stableSnapshotJson(snapshot.trechos), stableSnapshotJson({ ...snapshot.trechos, savedBy: { name: 'Other' } }))
+
+    const calls = []
+    const fakeStorage = {
+      importProjectMeta: (p) => calls.push(['meta', p.name]),
+      importRemoteDocuments: (docs) => {
+        calls.push(['docs', docs.length])
+        return { added: 0, updated: 1 }
+      },
+      importExcerpts: (t) => {
+        calls.push(['trechos', t.excerpts.length])
+        return { added: 1, updated: 0, removed: 0, skipped: 0, codesAdded: 0 }
+      },
+      importExcerptGraph: (g) => {
+        calls.push(['grafo', g.relations.length])
+        return { added: 0, updated: 0, removed: 0 }
+      }
+    }
+
+    const applied = applyRemoteProjectSnapshot({
+      remoteProjeto: snapshot.projeto,
+      remoteDocs: snapshot.documentos,
+      remoteTrechos: snapshot.trechos,
+      remoteGrafo: snapshot.grafo,
+      storage: fakeStorage
+    })
+
+    assert.equal(applied.found, true)
+    assert.equal(applied.added, 1)
+    assert.deepEqual(calls, [
+      ['meta', 'Evasão EPT'],
+      ['docs', 2],
+      ['trechos', 1],
+      ['grafo', 0]
+    ])
   })
 })

@@ -2,6 +2,7 @@ import { openForReading } from '../services/reading-intent.js'
 import { pdfTextExtractor } from '../services/pdf-text.js'
 import { LitElement, html, css } from 'lit'
 import { researchStorage, getPersistenceProviderLabel } from '../services/storage-service.js'
+import { triggerBackgroundPull } from '../services/background-sync-service.js'
 import { authService } from 'fzl-fund-appshell--lit'
 import { CaqdasPersonalCloudDocsController } from '../controllers/caqdas-controllers.js'
 import '@material/web/button/filled-button.js'
@@ -485,6 +486,8 @@ export class CaqdasSourcesView extends LitElement {
         return
       }
       const added = researchStorage.importCloudFiles(result.files, result.provider)
+      // Traz também marcações, códigos e grafo salvos em .caqdas-dados/ na mesma conta da nuvem.
+      void triggerBackgroundPull({ force: true, interactive, reason: 'sources-cloud-pull' })
       const label = getPersistenceProviderLabel(result.provider)
       this.cloudPullStatus =
         added > 0

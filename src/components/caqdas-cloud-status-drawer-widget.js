@@ -261,7 +261,7 @@ export class CaqdasCloudStatusDrawerWidget extends LitElement {
       return html`
         <div class="bg-sync-box">
           <span>
-            GitHub privado não configurado neste dispositivo.
+            ${bg.message || 'Faça login ou configure o GitHub para sincronizar marcações.'}
             <a
               href="#/config/persistencia"
               style="color: #0284c7; font-weight: 600;"
@@ -278,17 +278,17 @@ export class CaqdasCloudStatusDrawerWidget extends LitElement {
       <div class="bg-sync-box ${bg.state === 'error' ? 'error' : ''}">
         <span>
           ${bg.state === 'syncing'
-            ? '🔄 Sincronizando marcações do GitHub…'
+            ? '🔄 Sincronizando marcações em segundo plano…'
             : bg.state === 'error'
               ? `⚠️ ${bg.message}`
-              : `✓ ${bg.message || 'Marcações sincronizadas do GitHub'}${timeLabel ? ` (${timeLabel})` : ''}`}
+              : `✓ ${bg.message || 'Marcações sincronizadas'}${timeLabel ? ` (${timeLabel})` : ''}`}
         </span>
         <button
           type="button"
           class="bg-sync-btn"
           ?disabled=${bg.state === 'syncing'}
-          title="Buscar marcações mais recentes do repositório privado no GitHub"
-          @click=${() => void triggerBackgroundPull({ force: true, reason: 'manual' })}
+          title="Buscar e sincronizar marcações da nuvem (Drive/OneDrive) e GitHub"
+          @click=${() => void triggerBackgroundPull({ force: true, interactive: true, reason: 'manual' })}
         >
           ${bg.state === 'syncing' ? '…' : 'Atualizar'}
         </button>

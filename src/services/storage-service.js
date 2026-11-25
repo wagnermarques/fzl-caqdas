@@ -631,9 +631,10 @@ class ResearchStorageService {
     for (const f of files || []) {
       if (!f?.id || knownIds.has(f.id)) continue
       const mime = String(f.mimeType || '')
-      // Pastas e documentos nativos do Google (Docs/Sheets) não têm conteúdo binário para baixar.
+      // Pastas (ex.: .caqdas-dados) e documentos nativos do Google (Docs/Sheets) não entram como arquivos do corpus.
       if (mime === 'folder' || mime.startsWith('application/vnd.google-apps.')) continue
       const name = String(f.name || 'arquivo')
+      if (name === '.caqdas-dados' || /^\.caqdas-.*\.json$/i.test(name)) continue
       const ext = name.includes('.') ? name.slice(name.lastIndexOf('.')).toLowerCase() : ''
       // Mesmo arquivo já registrado localmente mas sem o ID remoto (envio antigo): só vincula.
       const sameLocal = docs.find((d) => !d.googleDriveFileId && d.title === name && (!f.size || !d.size || d.size === f.size))

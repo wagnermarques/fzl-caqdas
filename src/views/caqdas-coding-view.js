@@ -6,6 +6,7 @@ import { takeReadingRequest } from '../services/reading-intent.js'
 import { extractPdfText, pdfDocumentFields, loadPdfjs } from '../services/pdf-text.js'
 import { hydrateLegislationDocument } from '../services/legislation-service.js'
 import { isGithubConfigured, syncWithGithub, getGithubConfig } from '../services/github-sync-service.js'
+import { isPersonalCloudSyncReady, syncWithPersonalCloud } from '../services/cloud-excerpts-sync-service.js'
 import { CaqdasDocxCodingController, CaqdasPersonalCloudDocsController } from '../controllers/caqdas-controllers.js'
 import '@material/web/button/filled-button.js'
 import '@material/web/button/outlined-button.js'
@@ -1291,9 +1292,11 @@ export class CaqdasCodingView extends LitElement {
 
   async _handleGithubSave() {
     if (this.githubSyncBusy) return
-    if (!isGithubConfigured()) {
+    const ghReady = isGithubConfigured()
+    const cloudReady = isPersonalCloudSyncReady()
+    if (!ghReady && !cloudReady) {
       const goConfig = confirm(
-        'O repositório remoto privado do GitHub ainda não está configurado.\n\nDeseja ir para Persistência & Sincronização para configurar agora?'
+        'O repositório remoto privado do GitHub (ou Google Drive/OneDrive) ainda não está configurado.\n\nDeseja ir para Persistência & Sincronização para configurar agora?'
       )
       if (goConfig) {
         if (this._reader?.fullscreen) {
@@ -1306,8 +1309,22 @@ export class CaqdasCodingView extends LitElement {
     this.githubSyncBusy = true
     this.githubSyncStatus = null
     try {
+      if (!ghReady && cloudReady) {
+        const r = await syncWithPersonalCloud({ interactive: true, push: true })
+        const providerLabel = r.provider === 'onedrive' ? 'OneDrive' : 'Google Drive'
+        this.githubSyncStatus = {
+          kind: 'ok',
+          short: 'Salvo no Drive',
+          text: `Marcações sincronizadas com ${providerLabel} (${r.excerptCount || 0} trecho(s) e ${r.relationCount || 0} relação(ões)).`,
+          link: ''
+        }
+        return
+      }
       const user = authService.getCurrentUser?.()
       const r = await syncWithGithub(user ? { name: user.name || '' } : null)
+      if (cloudReady) {
+        void syncWithPersonalCloud({ interactive: false, push: true }).catch(() => {})
+      }
       const relInfo = r.relationCount ? ` e ${r.relationCount} relação(ões)` : ''
       const merged = [
         r.added && `${r.added} trecho(s) novo(s) do GitHub`,
