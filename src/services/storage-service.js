@@ -8,8 +8,9 @@ import {
   mergeExcerptGraphs
 } from './excerpt-graph-utils.js'
 import { mergeRemoteDocuments, mergeRemoteCodes } from './corpus-sync-utils.js'
+import { DEFAULT_NOTEBOOK_NAME, sanitizeNotebookName } from './notebook-utils.js'
 
-export { GRAPH_SCHEMA }
+export { GRAPH_SCHEMA, DEFAULT_NOTEBOOK_NAME }
 
 // Pesquisa e estudo teórico ficam no escopo do usuário (userData.getItem/setItem).
 const STORAGE_KEY = 'research_data_v1'
@@ -35,6 +36,7 @@ const DEFAULT_CLOUD_CONFIG = {
   provider: 'local',
   autoConfigureByAuthProvider: true,
   homeDirName: DEFAULT_HOME_DIR,
+  notebookName: DEFAULT_NOTEBOOK_NAME,
   googleClientId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GOOGLE_CLIENT_ID) || '',
   microsoftClientId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MICROSOFT_CLIENT_ID) || '',
   microsoftTenantId: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_MICROSOFT_TENANT_ID) || 'common',
@@ -514,6 +516,14 @@ class ResearchStorageService {
       .trim()
       .replace(/^\/+|\/+$/g, '')
     return clean || DEFAULT_HOME_DIR
+  }
+
+  /**
+   * Retorna o nome configurado para o caderno no NotebookLM / Gemini Notebook (padrão: APP-CAQDAS-HOME-NOTEBOOK).
+   */
+  getNotebookName() {
+    const cfg = this.getCloudSyncConfig()
+    return sanitizeNotebookName(cfg.notebookName)
   }
 
   /**

@@ -7,6 +7,7 @@ import { researchStorage } from './services/storage-service.js'
 import { clearCachedCloudTokens, CaqdasPersonalCloudDocsController } from './controllers/caqdas-controllers.js'
 import { purgeLegacyGlobalData, setCloudTokenProvider } from './services/user-data-service.js'
 import { startBackgroundSync } from './services/background-sync-service.js'
+import { clearNotebookSessionToken } from './services/notebook-sync-service.js'
 
 // Dados antigos sem escopo de usuário: descartados (decisão do usuário; serão reinseridos).
 purgeLegacyGlobalData()
@@ -80,6 +81,7 @@ createAppShell({
     },
     'auth:logout': ({ reason }) => {
       clearCachedCloudTokens()
+      clearNotebookSessionToken()
       researchStorage.resetProviderWhenUnauthenticated(null)
       console.info(`[FZL CAQDAS] Sessão encerrada (${reason || 'manual'})`)
     },

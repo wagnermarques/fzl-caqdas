@@ -10,6 +10,7 @@ import '@material/web/textfield/outlined-text-field.js'
 import '@fzl/webcomponents-lit/social-login'
 import '@fzl/webcomponents-lit/reader-chapterview'
 import '../components/caqdas-github-sync-panel.js'
+import '../components/caqdas-notebook-sync-panel.js'
 
 export class CaqdasPersistenceConfigView extends LitElement {
   static styles = css`
@@ -777,6 +778,11 @@ export class CaqdasPersistenceConfigView extends LitElement {
       <!-- Trechos e projeto no GitHub (repositório privado do usuário) -->
       <div class="section-card">
         <caqdas-github-sync-panel></caqdas-github-sync-panel>
+      </div>
+
+      <!-- Integração com Google Notebook (NotebookLM) -->
+      <div class="section-card">
+        <caqdas-notebook-sync-panel></caqdas-notebook-sync-panel>
       </div>
     `
   }

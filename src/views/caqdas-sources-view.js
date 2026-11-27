@@ -14,6 +14,7 @@ import '@fzl/webcomponents-lit/document-picker'
 import '@fzl/webcomponents-lit/camera-capture'
 import '../components/caqdas-audio-recorder.js'
 import '../components/caqdas-legislation-panel.js'
+import '../components/caqdas-notebook-sync-panel.js'
 
 export class CaqdasSourcesView extends LitElement {
   static styles = css`
@@ -1192,6 +1193,8 @@ export class CaqdasSourcesView extends LitElement {
                     </div>
                   `
                 : ''}
+
+              <caqdas-notebook-sync-panel compact></caqdas-notebook-sync-panel>
 
               <fzl-file-manager
                 view-mode="table"
